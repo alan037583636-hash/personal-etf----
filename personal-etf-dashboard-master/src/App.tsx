@@ -14,7 +14,9 @@ import {
 import {
   calculateEtfNavWithRebalancing,
   calculateRangeMetrics,
+  calculateRangeRiskMetrics,
 } from './utils/etfCalculator';
+import { readJsonResponse } from './utils/http';
 import { exportNavHistoryToCsv } from './utils/exportCsv';
 import { Header } from './components/Header';
 import { MetricsCards } from './components/MetricsCards';
@@ -195,7 +197,10 @@ export default function App() {
       if (!response.ok) {
         throw new Error(`API 伺服器狀態碼 ${response.status}`);
       }
-      const json: RealDataApiResponse = await response.json();
+      const json = await readJsonResponse<RealDataApiResponse>(
+        response,
+        '行情伺服器回傳無效資料，請稍後再試。'
+      );
       if (!json.success) {
         throw new Error(json.warning || '無法獲取股票資料');
       }
@@ -242,6 +247,17 @@ export default function App() {
   const metrics = useMemo(() => {
     return calculateRangeMetrics(allNavData, startIndex, endIndex);
   }, [allNavData, startIndex, endIndex]);
+
+  const riskMetrics = useMemo(
+    () => calculateRangeRiskMetrics(
+      allNavData,
+      startIndex,
+      endIndex,
+      Math.max(0, benchmarkSymbols.findIndex((symbol) => symbol.trim())),
+      metrics.cagr
+    ),
+    [allNavData, startIndex, endIndex, metrics.cagr, benchmarkSymbols]
+  );
 
   const fullPeriodMetrics = useMemo(
     () => calculateRangeMetrics(allNavData, 0, Math.max(0, allNavData.length - 1)),
@@ -430,9 +446,10 @@ export default function App() {
           selectedPreset={selectedPreset}
           rangeLabel={rangeLabel}
           rebalanceMode={rebalanceMode}
-          benchmarkSymbol={benchmarkSymbols[0] || '未設定'}
+          benchmarkSymbol={benchmarkSymbols.find((symbol) => symbol.trim()) || '0050.TW'}
           todayChange={todayChange.amount}
           todayChangePercent={todayChange.percent}
+          riskMetrics={riskMetrics}
         />
 
         {/* 5. 互動式淨值走勢與對比圖表 (含百分比 Y 軸切換、強化迷你時間軸滑桿、起始日歸一) */}

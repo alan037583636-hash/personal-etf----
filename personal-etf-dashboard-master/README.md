@@ -37,14 +37,15 @@
   - 1% step integer inputs with real-time colored visual allocation progress bar.
   - Holdings are saved automatically even when the total differs from 100%; historical simulations normalize active weights proportionally, and one click can standardize them to 100%.
 - **Single-Field Stock Search & Sector Classification**:
-  - Adds Taiwan stocks by code or Chinese name using a built-in symbol directory and Yahoo Finance search.
+  - Adds Taiwan stocks and ETFs by code or Chinese name using the locally bundled TWSE/TPEx directory, with Yahoo Finance only as a fallback for other symbols.
+  - Regenerate the official directory with `npm run fetch:tw-stocks`; it reads both TWSE ISIN listing pages and writes `src/data/twStockList.json`.
   - Automatically classifies common semiconductor, optical communications, AI server, power/cooling, machinery, financial, and ETF holdings into dynamic sector weights.
 - **Shareable URL State & LocalStorage Persistence**:
   - Serializes portfolio configuration into query parameters (e.g., `?portfolio=2454:40,2308:25,3711:25,2356:10`).
   - Automatic URL state sync and instant one-click clipboard link sharing with toast confirmation.
   - Automatic LocalStorage persistence across browser sessions.
 - **Professional Performance Metrics**:
-  - Highlights **Current NAV** and the latest trading-day weighted change alongside **Total Return (%)**, **CAGR (Compound Annual Growth Rate)**, and **MDD (Max Drawdown)**.
+  - Highlights **Current NAV**, **Total Return (%)**, **CAGR**, **MDD**, annualized volatility, the Sharpe ratio (1.5% risk-free rate), and beta against the selected benchmark (default `0050.TW`).
 - **AI Portfolio Insights with Provider Fallback**:
   - Server-side Gemini → Groq → OpenRouter fallback with a built-in rules-based response when keys are absent or providers fail.
   - Configure optional `GEMINI_API_KEY`, `GROQ_API_KEY`, and `OPENROUTER_API_KEY` environment variables on the server; never expose them through Vite client variables.

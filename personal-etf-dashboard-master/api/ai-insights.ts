@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { withJsonError } from './utils/withJsonError';
 
 type InsightProvider = 'Gemini' | 'Groq' | 'OpenRouter' | '內建規則';
 
@@ -212,7 +213,7 @@ async function callOpenAiCompatible(
   return message.content;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handleAiInsights(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: '僅支援 POST 請求。' });
   }
@@ -273,3 +274,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   return res.status(200).json({ success: true, ...createRuleBasedInsight(input) });
 }
+
+export default withJsonError(handleAiInsights, '/api/ai-insights');

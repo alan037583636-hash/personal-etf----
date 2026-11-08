@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
 import { findTaiwanStock } from '../src/utils/stockMetadata';
+import { withJsonError, withTimeout } from './utils/withJsonError';
 
 interface StockSearchResult {
   symbol: string;
@@ -32,7 +33,7 @@ function sectorFromProfile(industry = '', sector = ''): string | undefined {
   return undefined;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handleStockSearch(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -83,7 +84,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     const searchQuotes = async (searchQuery: string): Promise<StockSearchResult[]> => {
-      const searchResult = await yahooFinance.search(searchQuery, { quotesCount: 10, newsCount: 0 });
+      const searchResult = await withTimeout(
+        yahooFinance.search(searchQuery, { quotesCount: 10, newsCount: 0 }),
+        8000,
+        'Yahoo Finance 搜尋'
+      );
       return convertQuotes(searchResult.quotes);
     };
 
@@ -101,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       suggestionUrl.searchParams.set('newsCount', '0');
       suggestionUrl.searchParams.set('region', 'TW');
       suggestionUrl.searchParams.set('lang', 'zh-TW');
-      const response = await fetch(suggestionUrl);
+      const response = await fetch(suggestionUrl, { signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error(`Yahoo 台股搜尋建議回傳 HTTP ${response.status}`);
       const suggestionResult: unknown = await response.json();
       const suggestionQuotes = isRecord(suggestionResult) && Array.isArray(suggestionResult.quotes)
@@ -146,9 +151,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (stock) return { ...result, name: stock.name, sector: stock.sector };
       if (!/\.(TW|TWO)$/i.test(result.symbol)) return result;
       try {
-        const profile = await yahooFinance.quoteSummary(result.symbol, {
-          modules: ['assetProfile', 'summaryProfile'],
-        });
+        const profile = await withTimeout(
+          yahooFinance.quoteSummary(result.symbol, { modules: ['assetProfile', 'summaryProfile'] }),
+          8000,
+          `Yahoo Finance ${result.symbol} 產業查詢`
+        );
         const industry = profile.assetProfile?.industry || profile.summaryProfile?.industry || '';
         const sector = profile.assetProfile?.sector || profile.summaryProfile?.sector || '';
         return { ...result, sector: sectorFromProfile(industry, sector) };
@@ -168,3 +175,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
+
+export default withJsonError(handleStockSearch, '/api/stock-search');

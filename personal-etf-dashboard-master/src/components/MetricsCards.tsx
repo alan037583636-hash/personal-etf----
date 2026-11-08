@@ -1,5 +1,5 @@
 import React from 'react';
-import { PerformanceMetrics, RangePreset, RebalanceMode } from '../types/etf';
+import { PerformanceMetrics, RangePreset, RebalanceMode, RiskMetrics } from '../types/etf';
 import { ArrowUpRight, ArrowDownRight, TrendingUp, ShieldAlert, Award, Info } from 'lucide-react';
 
 interface MetricsCardsProps {
@@ -10,6 +10,7 @@ interface MetricsCardsProps {
   benchmarkSymbol: string;
   todayChange: number | null;
   todayChangePercent: number | null;
+  riskMetrics: RiskMetrics;
 }
 
 export const MetricsCards: React.FC<MetricsCardsProps> = ({
@@ -20,12 +21,14 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
   benchmarkSymbol,
   todayChange,
   todayChangePercent,
+  riskMetrics,
 }) => {
   const isRangePositive = metrics.rangeReturn >= 0;
   const isCagrPositive = metrics.cagr >= 0;
   const is5YearPositive = metrics.allTimeReturn >= 0;
 
   return (
+    <div className="space-y-2.5 sm:space-y-3">
     <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
       {/* 1. 最新淨值 (Current NAV) */}
       <div className="col-span-2 p-4 sm:p-5 bg-white rounded-xl border border-red-200 shadow-[0_0_22px_rgba(239,68,68,0.10)] flex flex-col justify-between">
@@ -203,6 +206,51 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
           </span>
         </div>
       </div>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3" aria-label="風險調整後收益指標">
+      {[
+        {
+          label: '年化波動度',
+          value: riskMetrics.annualizedVolatility === null
+            ? '資料不足'
+            : `${(riskMetrics.annualizedVolatility * 100).toFixed(2)}%`,
+          description: '區間每日報酬率標準差乘以 √252，衡量年化價格波動。',
+        },
+        {
+          label: '夏普值',
+          value: riskMetrics.sharpeRatio === null ? '資料不足' : riskMetrics.sharpeRatio.toFixed(2),
+          description: '以年化報酬率扣除 1.5% 無風險利率後，除以年化波動度。',
+        },
+        {
+          label: `Beta（${benchmarkSymbol}）`,
+          value: riskMetrics.beta === null ? '資料不足' : riskMetrics.beta.toFixed(2),
+          description: `自組 ETF 與 ${benchmarkSymbol} 的每日報酬共變異數除以基準變異數。`,
+        },
+      ].map((metric) => (
+        <div
+          key={metric.label}
+          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2.5 shadow-2xs"
+        >
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[11px] sm:text-xs font-semibold text-slate-500">{metric.label}</span>
+            <div className="relative group inline-flex shrink-0 items-center">
+              <button
+                type="button"
+                aria-label={`查看${metric.label}說明`}
+                className="text-slate-400 hover:text-slate-600 cursor-help transition-colors"
+              >
+                <Info className="w-3.5 h-3.5" />
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-30 w-56 p-2 bg-slate-900 text-white text-[11px] leading-relaxed rounded-md shadow-lg pointer-events-none">
+                {metric.description}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+              </div>
+            </div>
+          </div>
+          <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-slate-800">{metric.value}</span>
+        </div>
+      ))}
+    </div>
     </div>
   );
 };

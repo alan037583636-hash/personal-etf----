@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
+import { withJsonError, withTimeout } from './utils/withJsonError';
 
 // 記憶體快取 (In-Memory Cache Fallback)，在 Vercel Serverless 實例存活期間複用
 interface CacheEntry {
@@ -49,7 +50,7 @@ function normalizeSymbol(symbol: string): { original: string; yahooSymbol: strin
   return { original: clean, yahooSymbol: clean };
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
   // 設定全域 CORS 標頭，避免跨域請求遭阻擋
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -107,10 +108,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await Promise.all(
       symbolMap.map(async ({ original, yahooSymbol }) => {
         try {
-          const chartResult = await yf.chart(yahooSymbol, {
-            period1,
-            interval: '1d',
-          });
+          const chartResult = await withTimeout(
+            yf.chart(yahooSymbol, { period1, interval: '1d' }),
+            8000,
+            `Yahoo Finance ${yahooSymbol} 歷史報價查詢`
+          );
 
           const rawQuotes = chartResult.quotes || [];
           const validQuotes: HistoricalPricePoint[] = [];
@@ -205,3 +207,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
+
+export default withJsonError(handleHistoricalPrices, '/api/historical-prices');

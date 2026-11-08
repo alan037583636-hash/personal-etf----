@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
+import { withJsonError, withTimeout } from './utils/withJsonError';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 let cachedResult: { timestamp: number; changePercent: number; latestDate: string } | null = null;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handleMarketInsights(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: '僅支援 GET 請求。' });
   }
@@ -22,10 +23,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const period1 = new Date();
     period1.setMonth(period1.getMonth() - 4);
     const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] });
-    const result = await yahooFinance.chart('^TWII', {
-      period1: period1.toISOString().slice(0, 10),
-      interval: '1d',
-    });
+    const result = await withTimeout(
+      yahooFinance.chart('^TWII', {
+        period1: period1.toISOString().slice(0, 10),
+        interval: '1d',
+      }),
+      8000,
+      'Yahoo Finance 大盤查詢'
+    );
     const quotes = (result.quotes || []).filter(
       (quote) => quote.date && typeof quote.close === 'number' && quote.close > 0
     );
@@ -54,3 +59,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
+
+export default withJsonError(handleMarketInsights, '/api/market-insights');

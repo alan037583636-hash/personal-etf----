@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react';
 import { PerformanceMetrics, PortfolioHolding, RealDataApiResponse } from '../types/etf';
 import { getStockSector } from '../utils/stockMetadata';
+import { readJsonResponse } from '../utils/http';
 
 interface InvestmentInsightsProps {
   holdings: PortfolioHolding[];
@@ -65,7 +66,10 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({ holdings
     const loadMarketTrend = async () => {
       try {
         const response = await fetch('/api/market-insights', { signal: controller.signal });
-        const result: MarketInsightResponse = await response.json();
+        const result = await readJsonResponse<MarketInsightResponse>(
+          response,
+          '台灣加權指數伺服器回傳無效資料。'
+        );
         if (!response.ok || !result.success || typeof result.changePercent !== 'number') {
           throw new Error(result.error || '暫時無法取得台灣加權指數趨勢。');
         }
@@ -184,7 +188,10 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({ holdings
           body: JSON.stringify(requestBody),
           signal: controller.signal,
         });
-        const result: unknown = await response.json();
+        const result: unknown = await readJsonResponse<unknown>(
+          response,
+          '智能診斷伺服器回傳無效資料。'
+        );
         if (!response.ok || !isAiInsight(result)) {
           throw new Error('目前無法取得智能診斷，已改用內建規則。');
         }

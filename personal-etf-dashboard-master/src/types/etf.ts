@@ -71,6 +71,12 @@ export interface PerformanceMetrics {
   benchmarkRangeReturn?: number;
 }
 
+export interface RiskMetrics {
+  annualizedVolatility: number | null;
+  sharpeRatio: number | null;
+  beta: number | null;
+}
+
 export interface RealStockResult {
   symbol: string;
   querySymbol: string;

@@ -1,4 +1,5 @@
-import { findTaiwanStock, normalizeStockSymbol } from './stockMetadata';
+import { findTaiwanStock, normalizeStockSymbol, searchTaiwanStocks } from './stockMetadata';
+import { readJsonResponse } from './http';
 
 export interface StockSearchMatch {
   symbol: string;
@@ -14,16 +15,21 @@ interface StockSearchResponse {
 
 export async function searchStock(query: string): Promise<StockSearchMatch> {
   const cleanQuery = query.trim();
-  const knownStock = findTaiwanStock(cleanQuery);
+  const localMatches = searchTaiwanStocks(cleanQuery);
+  const knownStock = localMatches[0] || findTaiwanStock(cleanQuery);
   if (knownStock) {
     return {
       symbol: normalizeStockSymbol(knownStock.code, knownStock),
       name: knownStock.name,
+      sector: knownStock.sector,
     };
   }
 
   const response = await fetch(`/api/stock-search?q=${encodeURIComponent(cleanQuery)}`);
-  const result: StockSearchResponse = await response.json();
+  const result = await readJsonResponse<StockSearchResponse>(
+    response,
+    '股票搜尋伺服器暫時無法處理請求，請稍後再試。'
+  );
   if (!response.ok || !result.success || !result.results?.length) {
     throw new Error(result.error || '找不到符合的股票或 ETF，請確認名稱或代號。');
   }

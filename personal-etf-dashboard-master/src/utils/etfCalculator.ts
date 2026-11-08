@@ -2,6 +2,7 @@ import {
   PortfolioHolding,
   DailyNavPoint,
   PerformanceMetrics,
+  RiskMetrics,
   RebalanceMode,
   RealDataApiResponse,
   IpoNotice,
@@ -439,5 +440,77 @@ export function calculateRangeMetrics(
     rangeHigh: Math.round(rangeHigh * 100) / 100,
     rangeLow: Math.round(rangeLow * 100) / 100,
     benchmarkRangeReturn: Math.round(benchmarkRangeReturn * 100) / 100,
+  };
+}
+
+export function calculateRangeRiskMetrics(
+  allNavs: DailyNavPoint[],
+  startIndex: number,
+  endIndex: number,
+  benchmarkIndex: number,
+  annualizedReturnPercent: number
+): RiskMetrics {
+  const start = Math.max(0, Math.min(startIndex, allNavs.length - 1));
+  const end = Math.max(start, Math.min(endIndex, allNavs.length - 1));
+  const range = allNavs.slice(start, end + 1);
+  const portfolioReturns: number[] = [];
+  const benchmarkReturns: number[] = [];
+
+  for (let index = 1; index < range.length; index++) {
+    const previous = range[index - 1];
+    const current = range[index];
+    if (previous.nav <= 0 || current.nav <= 0) continue;
+
+    portfolioReturns.push(current.nav / previous.nav - 1);
+    const previousBenchmark = previous.benchmarkPrices?.[benchmarkIndex] ??
+      (benchmarkIndex === 0 ? previous.benchmarkPrice : undefined);
+    const currentBenchmark = current.benchmarkPrices?.[benchmarkIndex] ??
+      (benchmarkIndex === 0 ? current.benchmarkPrice : undefined);
+    benchmarkReturns.push(
+      typeof previousBenchmark === 'number' && previousBenchmark > 0 &&
+      typeof currentBenchmark === 'number' && currentBenchmark > 0
+        ? currentBenchmark / previousBenchmark - 1
+        : Number.NaN
+    );
+  }
+
+  if (portfolioReturns.length < 2) {
+    return { annualizedVolatility: null, sharpeRatio: null, beta: null };
+  }
+
+  const mean = portfolioReturns.reduce((sum, value) => sum + value, 0) / portfolioReturns.length;
+  const variance = portfolioReturns.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    portfolioReturns.length;
+  const annualizedVolatility = Math.sqrt(variance * 252);
+  const sharpeRatio = annualizedVolatility > 0
+    ? (annualizedReturnPercent / 100 - 0.015) / annualizedVolatility
+    : null;
+
+  const pairedReturns = portfolioReturns.flatMap((portfolioReturn, index) => {
+    const benchmarkReturn = benchmarkReturns[index];
+    return Number.isFinite(benchmarkReturn) ? [{ portfolioReturn, benchmarkReturn }] : [];
+  });
+  let beta: number | null = null;
+  if (pairedReturns.length >= 2) {
+    const portfolioMean = pairedReturns.reduce((sum, item) => sum + item.portfolioReturn, 0) /
+      pairedReturns.length;
+    const benchmarkMean = pairedReturns.reduce((sum, item) => sum + item.benchmarkReturn, 0) /
+      pairedReturns.length;
+    const benchmarkVariance = pairedReturns.reduce(
+      (sum, item) => sum + (item.benchmarkReturn - benchmarkMean) ** 2,
+      0
+    ) / pairedReturns.length;
+    const covariance = pairedReturns.reduce(
+      (sum, item) => sum +
+        (item.portfolioReturn - portfolioMean) * (item.benchmarkReturn - benchmarkMean),
+      0
+    ) / pairedReturns.length;
+    if (benchmarkVariance > 0) beta = covariance / benchmarkVariance;
+  }
+
+  return {
+    annualizedVolatility,
+    sharpeRatio: sharpeRatio !== null && Number.isFinite(sharpeRatio) ? sharpeRatio : null,
+    beta: beta !== null && Number.isFinite(beta) ? beta : null,
   };
 }
