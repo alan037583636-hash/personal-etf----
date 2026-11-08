@@ -8,6 +8,7 @@ export interface TaiwanStockMetadata {
 
 export const TAIWAN_STOCKS: TaiwanStockMetadata[] = [
   { code: '2330', name: '台積電', sector: '晶圓代工', aliases: ['台灣積體電路'] },
+  { code: '2303', name: '聯電', sector: '晶圓代工' },
   { code: '2454', name: '聯發科', sector: 'IC 設計' },
   { code: '2379', name: '瑞昱', sector: 'IC 設計' },
   { code: '3034', name: '聯詠', sector: 'IC 設計' },
@@ -17,15 +18,16 @@ export const TAIWAN_STOCKS: TaiwanStockMetadata[] = [
   { code: '3661', name: '世芯-KY', sector: 'IC 設計', aliases: ['世芯'] },
   { code: '6533', name: '晶心科', sector: 'IC 設計' },
   { code: '6415', name: '矽力*-KY', sector: 'IC 設計', aliases: ['矽力'] },
-  { code: '2303', name: '聯電', sector: '晶圓代工' },
   { code: '5347', name: '世界先進', sector: '晶圓代工', exchange: 'TWO' },
   { code: '6770', name: '力積電', sector: '晶圓代工' },
   { code: '3711', name: '日月光投控', sector: '半導體封測', aliases: ['日月光'] },
+  { code: '6239', name: '力成', sector: '半導體封測', aliases: ['力成科技'] },
   { code: '2449', name: '京元電子', sector: '半導體封測' },
   { code: '3264', name: '欣銓', sector: '半導體封測', exchange: 'TWO' },
   { code: '6257', name: '矽格', sector: '半導體封測' },
   { code: '8150', name: '南茂', sector: '半導體封測' },
   { code: '3081', name: '聯亞', sector: '光通訊', exchange: 'TWO' },
+  { code: '3163', name: '波若威', sector: '光通訊', exchange: 'TWO' },
   { code: '6442', name: '光聖', sector: '光通訊' },
   { code: '4979', name: '華星光', sector: '光通訊', exchange: 'TWO' },
   { code: '3363', name: '上詮', sector: '光通訊', exchange: 'TWO' },
@@ -47,6 +49,7 @@ export const TAIWAN_STOCKS: TaiwanStockMetadata[] = [
   { code: '2049', name: '上銀', sector: '精密機械/設備' },
   { code: '1590', name: '亞德客-KY', sector: '精密機械/設備', aliases: ['亞德客'] },
   { code: '3131', name: '弘塑', sector: '精密機械/設備' },
+  { code: '4576', name: '高明鐵', sector: '精密機械/設備' },
   { code: '3583', name: '辛耘', sector: '精密機械/設備' },
   { code: '3680', name: '家登', sector: '精密機械/設備' },
   { code: '6196', name: '帆宣', sector: '精密機械/設備' },
@@ -60,6 +63,7 @@ export const TAIWAN_STOCKS: TaiwanStockMetadata[] = [
   { code: '2892', name: '第一金', sector: '金融' },
   { code: '5880', name: '合庫金', sector: '金融' },
   { code: '0050', name: '元大台灣50', sector: '市值型 ETF' },
+  { code: '00631L', name: '元大台灣50正2', sector: '市值/槓桿型 ETF' },
   { code: '0056', name: '元大高股息', sector: '高股息 ETF' },
   { code: '00878', name: '國泰永續高股息', sector: '高股息 ETF' },
   { code: '00919', name: '群益台灣精選高息', sector: '高股息 ETF' },
@@ -110,15 +114,16 @@ export function getStockSector(symbol: string, name = '', fallbackSector?: strin
 
   const match = keywordSectors.find(([pattern]) => pattern.test(description));
   if (match) return match[1];
-  if (/\.TWO$/i.test(symbol) || /電子|半導體|科技|光通訊|電腦|網通/i.test(description)) {
-    return '其他電子';
-  }
+  if (/Semiconductor|半導體/i.test(description)) return '半導體';
+  if (/Electronic|電子零組件|電子/i.test(description)) return '電子零組件';
+  if (/Computer|電腦|伺服器/i.test(description)) return '電腦及週邊';
+  if (/Technology|科技|光通訊|網通/i.test(description) || /\.TWO$/i.test(symbol)) return '其他電子';
   return '其他傳產';
 }
 
 export function normalizeStockSymbol(symbol: string, stock?: TaiwanStockMetadata): string {
   const clean = symbol.trim().toUpperCase();
-  if (!/^\d{4,6}$/.test(clean)) return clean;
+  if (!/^\d{4,6}[A-Z]?$/.test(clean)) return clean;
   const known = stock || findTaiwanStock(clean);
   return `${clean}.${known?.exchange || 'TW'}`;
 }

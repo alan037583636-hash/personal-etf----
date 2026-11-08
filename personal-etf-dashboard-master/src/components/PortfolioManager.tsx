@@ -69,15 +69,19 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
   // 依比例整數標準化至 100%
   const handleNormalize = () => {
     if (totalWeight <= 0 || holdings.length === 0) return;
-    let sumNormalized = 0;
-    const updated = holdings.map((h, idx) => {
-      if (idx === holdings.length - 1) {
-        return { ...h, weight: Math.max(0, 100 - sumNormalized) };
-      }
-      const val = Math.round((h.weight / totalWeight) * 100);
-      sumNormalized += val;
-      return { ...h, weight: val };
+    const allocations = holdings.map((holding, index) => {
+      const exactWeight = (holding.weight / totalWeight) * 100;
+      return { index, weight: Math.floor(exactWeight), remainder: exactWeight % 1 };
     });
+    const remaining = 100 - allocations.reduce((sum, allocation) => sum + allocation.weight, 0);
+    const priority = [...allocations].sort((left, right) => right.remainder - left.remainder);
+    for (let index = 0; index < remaining; index++) {
+      allocations[priority[index].index].weight += 1;
+    }
+    const updated = holdings.map((holding, index) => ({
+      ...holding,
+      weight: allocations[index].weight,
+    }));
     onUpdateHoldings(updated);
   };
 
@@ -92,9 +96,9 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
     const cleanWeight = Math.max(1, Math.min(100, Math.round(newWeight)));
 
     try {
-      const { symbol, name } = await searchStock(query);
+      const { symbol, name, sector: resolvedSector } = await searchStock(query);
 
-      const sector = getStockSector(symbol, name);
+      const sector = resolvedSector || getStockSector(symbol, name);
       const existingIdx = holdings.findIndex((h) => h.symbol.toUpperCase() === symbol.toUpperCase());
       if (existingIdx >= 0) {
         const updated = [...holdings];
@@ -130,7 +134,6 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
 
   // 手動儲存回饋提示
   const handleManualSave = () => {
-    if (!isExact100) return;
     try {
       localStorage.setItem('custom_etf_holdings_v2', JSON.stringify(holdings));
       setSaveToast(true);
@@ -221,9 +224,9 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
                 總權重已符合 100% (已自動儲存至 LocalStorage)
               </span>
             ) : (
-              <span className="text-xs font-bold text-red-600 flex items-center gap-1 animate-pulse">
+              <span className="text-xs font-medium text-amber-700 flex items-center gap-1">
                 <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                警告：總和目前為 {totalWeight}%，必須剛好等於 100%！
+                  目前總和為 {totalWeight}%，回測會自動按比例折算。
                 {isUnder100 && ` (尚缺 ${100 - totalWeight}%)`}
                 {isOver100 && ` (超出 ${totalWeight - 100}%)`}
               </span>
@@ -439,13 +442,13 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
         </table>
       </div>
 
-      {/* 底部操作與提交按鈕：若總和 != 100%，提交按鈕需反灰禁用，並顯示紅色警告文字 */}
+      {/* 持股每次變更都會由主畫面自動備份至 LocalStorage。 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
         <div className="text-xs">
           {!isExact100 ? (
-            <p className="font-bold text-red-600 flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>總權重必須為 100%（目前 {totalWeight}%）。請點擊「整數標準化至 100%」或微調各股以解除限制。</span>
+            <p className="font-medium text-amber-700 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+              <span>目前總和為 {totalWeight}%，持股已自動備份；回測將按各股相對比例折算。可使用「整數標準化至 100%」調整。</span>
             </p>
           ) : (
             <p className="text-emerald-700 font-medium flex items-center gap-1.5">
@@ -465,13 +468,8 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
           <button
             type="button"
             onClick={handleManualSave}
-            disabled={!isExact100}
-            className={`px-4 py-2 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              isExact100
-                ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer active:scale-98'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
-            }`}
-            title={!isExact100 ? '總權重不等於 100% 時禁用' : '儲存目前持股與權重設定'}
+            className="px-4 py-2 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-1.5 whitespace-nowrap bg-slate-900 hover:bg-slate-800 text-white cursor-pointer active:scale-98"
+            title="儲存目前持股與權重設定"
           >
             <Save className="w-3.5 h-3.5" />
             <span>套用設定 (LocalStorage)</span>

@@ -8,6 +8,8 @@ interface MetricsCardsProps {
   rangeLabel: string;
   rebalanceMode: RebalanceMode;
   benchmarkSymbol: string;
+  todayChange: number | null;
+  todayChangePercent: number | null;
 }
 
 export const MetricsCards: React.FC<MetricsCardsProps> = ({
@@ -16,25 +18,49 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
   rangeLabel,
   rebalanceMode,
   benchmarkSymbol,
+  todayChange,
+  todayChangePercent,
 }) => {
   const isRangePositive = metrics.rangeReturn >= 0;
   const isCagrPositive = metrics.cagr >= 0;
   const is5YearPositive = metrics.allTimeReturn >= 0;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
       {/* 1. 最新淨值 (Current NAV) */}
-      <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+      <div className="col-span-2 p-4 sm:p-5 bg-white rounded-xl border border-red-200 shadow-[0_0_22px_rgba(239,68,68,0.10)] flex flex-col justify-between">
         <div className="flex items-center justify-between">
           <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate">最新淨值 (NAV)</span>
           <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono">基期 10.00 元</span>
         </div>
 
-        <div className="my-1.5 sm:my-2 flex items-baseline gap-1.5 sm:gap-2">
-          <span className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
+        <div className="my-1.5 sm:my-2 flex flex-wrap items-end justify-between gap-2">
+          <div className="flex items-baseline gap-1.5 sm:gap-2">
+          <span className="text-4xl sm:text-5xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
             {metrics.currentNav.toFixed(2)}
           </span>
-          <span className="text-[11px] sm:text-xs font-medium text-slate-500">元</span>
+          <span className="text-xs sm:text-sm font-medium text-slate-500">元</span>
+          </div>
+          <div className={`flex flex-col items-end font-mono tabular-nums ${
+            todayChange === null || todayChangePercent === null
+              ? 'text-slate-400'
+              : todayChange >= 0 ? 'text-red-600' : 'text-emerald-600'
+          }`}>
+            <span className="text-[10px] sm:text-xs font-sans font-medium text-slate-500">最新交易日漲跌</span>
+            <span className="flex items-center text-sm sm:text-base font-bold">
+              {todayChange === null || todayChangePercent === null ? (
+                '資料不足'
+              ) : (
+                <>
+                  {todayChange >= 0
+                    ? <ArrowUpRight className="w-4 h-4" />
+                    : <ArrowDownRight className="w-4 h-4" />}
+                  {todayChange >= 0 ? '+' : ''}{todayChange.toFixed(2)} 元
+                  <span className="ml-1">({todayChangePercent >= 0 ? '+' : ''}{todayChangePercent.toFixed(2)}%)</span>
+                </>
+              )}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">

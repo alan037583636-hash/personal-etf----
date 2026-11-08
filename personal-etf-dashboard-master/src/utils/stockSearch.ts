@@ -3,6 +3,7 @@ import { findTaiwanStock, normalizeStockSymbol } from './stockMetadata';
 export interface StockSearchMatch {
   symbol: string;
   name: string;
+  sector?: string;
 }
 
 interface StockSearchResponse {
@@ -37,5 +38,6 @@ export async function searchStock(query: string): Promise<StockSearchMatch> {
   return {
     symbol: normalizeStockSymbol(match.symbol),
     name: match.name,
+    sector: match.sector,
   };
 }

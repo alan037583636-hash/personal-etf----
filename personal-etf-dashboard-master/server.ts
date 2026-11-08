@@ -5,6 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import historicalPricesHandler from './api/historical-prices.ts';
 import stockSearchHandler from './api/stock-search.ts';
 import marketInsightsHandler from './api/market-insights.ts';
+import aiInsightsHandler from './api/ai-insights.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +25,9 @@ async function startServer() {
   });
   app.all('/api/market-insights', (req, res) => {
     return marketInsightsHandler(req as any, res as any);
+  });
+  app.all('/api/ai-insights', (req, res) => {
+    return aiInsightsHandler(req as any, res as any);
   });
 
   if (process.env.NODE_ENV === 'production') {

@@ -33,9 +33,9 @@
   - Desktop mouse drag and mobile touch-screen drag support.
 - **Component Sparklines (3-Month Trends)**:
   - Clean, zero-grid micro sparkline curves embedded in the holdings breakdown table illustrating each constituent's recent 3-month momentum.
-- **Integer Weight & 100% Strict Validation**:
+- **Flexible Integer Weights & LocalStorage Persistence**:
   - 1% step integer inputs with real-time colored visual allocation progress bar.
-  - Submit/Apply buttons automatically gray out and lock with red warnings if aggregate allocation does not equal 100%.
+  - Holdings are saved automatically even when the total differs from 100%; historical simulations normalize active weights proportionally, and one click can standardize them to 100%.
 - **Single-Field Stock Search & Sector Classification**:
   - Adds Taiwan stocks by code or Chinese name using a built-in symbol directory and Yahoo Finance search.
   - Automatically classifies common semiconductor, optical communications, AI server, power/cooling, machinery, financial, and ETF holdings into dynamic sector weights.
@@ -44,7 +44,10 @@
   - Automatic URL state sync and instant one-click clipboard link sharing with toast confirmation.
   - Automatic LocalStorage persistence across browser sessions.
 - **Professional Performance Metrics**:
-  - Real-time computation of **Current NAV**, **Total Return (%)**, **CAGR (Compound Annual Growth Rate)**, and **MDD (Max Drawdown)**, accompanied by explanatory educational tooltips.
+  - Highlights **Current NAV** and the latest trading-day weighted change alongside **Total Return (%)**, **CAGR (Compound Annual Growth Rate)**, and **MDD (Max Drawdown)**.
+- **AI Portfolio Insights with Provider Fallback**:
+  - Server-side Gemini → Groq → OpenRouter fallback with a built-in rules-based response when keys are absent or providers fail.
+  - Configure optional `GEMINI_API_KEY`, `GROQ_API_KEY`, and `OPENROUTER_API_KEY` environment variables on the server; never expose them through Vite client variables.
 - **Mobile-First Responsive Layout**:
   - Seamless layout folding and 2x2 / single-column responsive grids optimized for mobile viewports down to 320px.
 

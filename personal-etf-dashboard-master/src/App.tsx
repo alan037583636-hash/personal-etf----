@@ -110,7 +110,7 @@ export default function App() {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
@@ -242,6 +242,20 @@ export default function App() {
   const metrics = useMemo(() => {
     return calculateRangeMetrics(allNavData, startIndex, endIndex);
   }, [allNavData, startIndex, endIndex]);
+
+  const fullPeriodMetrics = useMemo(
+    () => calculateRangeMetrics(allNavData, 0, Math.max(0, allNavData.length - 1)),
+    [allNavData]
+  );
+
+  const todayChange = useMemo(() => {
+    if (allNavData.length < 2) return { amount: null, percent: null };
+    const latest = allNavData[allNavData.length - 1];
+    const previous = allNavData[allNavData.length - 2];
+    if (previous.nav <= 0) return { amount: null, percent: null };
+    const amount = latest.nav - previous.nav;
+    return { amount, percent: (amount / previous.nav) * 100 };
+  }, [allNavData]);
 
   const handleRangeChange = useCallback(
     (newStart: number, newEnd: number, preset: RangePreset) => {
@@ -417,6 +431,8 @@ export default function App() {
           rangeLabel={rangeLabel}
           rebalanceMode={rebalanceMode}
           benchmarkSymbol={benchmarkSymbols[0] || '未設定'}
+          todayChange={todayChange.amount}
+          todayChangePercent={todayChange.percent}
         />
 
         {/* 5. 互動式淨值走勢與對比圖表 (含百分比 Y 軸切換、強化迷你時間軸滑桿、起始日歸一) */}
@@ -442,7 +458,7 @@ export default function App() {
         {/* 3. 產業分佈與成分股微型趨勢圖 (Sparklines) */}
         <HoldingsBreakdown holdings={holdings} realData={realData} />
 
-        <InvestmentInsights holdings={holdings} realData={realData} />
+        <InvestmentInsights holdings={holdings} realData={realData} metrics={fullPeriodMetrics} />
       </main>
 
       {/* 頁尾版權與免責聲明 */}
