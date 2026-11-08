@@ -7,7 +7,6 @@ import {
   RealDataApiResponse,
   IpoNotice,
 } from '../types/etf';
-import { getTradingDates, getStockPriceHistory } from './mockStockData';
 
 // Helper to determine calendar quarter (1..4)
 function getCalendarQuarter(dateStr: string): number {
@@ -31,12 +30,10 @@ export function calculateEtfNavWithRebalancing(
     .slice(0, 2)
     .map((symbol) => symbol.trim().toUpperCase());
 
-  // If realData is provided and has quotes, use it; otherwise fallback to synthetic
   if (realData && realData.tradingDates && realData.tradingDates.length > 0) {
     return calculateFromRealMarketData(holdings, mode, realData, activeBenchmarks);
-  } else {
-    return calculateFromSyntheticData(holdings, mode, activeBenchmarks);
   }
+  return { navPoints: [], ipoNotices: [] };
 }
 
 function calculateFromRealMarketData(
@@ -230,101 +227,6 @@ function calculateFromRealMarketData(
   }
 
   return { navPoints, ipoNotices };
-}
-
-function calculateFromSyntheticData(
-  holdings: PortfolioHolding[],
-  mode: RebalanceMode,
-  benchmarkSymbols: string[]
-): { navPoints: DailyNavPoint[]; ipoNotices: IpoNotice[] } {
-  const dates = getTradingDates();
-  const totalDays = dates.length;
-
-  if (holdings.length === 0) {
-    return {
-      navPoints: dates.map((date) => ({
-        date,
-        nav: 10.0,
-        dailyReturn: 0,
-        cumulativeReturn: 0,
-        benchmarkPrice: 10.0,
-      })),
-      ipoNotices: [],
-    };
-  }
-
-  // Pre-fetch synthetic prices
-  const stockPrices = holdings.map((h) => ({
-    symbol: h.symbol,
-    weight: h.weight,
-    prices: getStockPriceHistory(h.symbol).prices,
-  }));
-
-  const benchmarkHistories = benchmarkSymbols.map((symbol) => getStockPriceHistory(symbol).prices);
-
-  const navPoints: DailyNavPoint[] = [];
-  let currentNav = 10.0;
-  let sharesHeld = new Map<string, number>();
-  let lastQuarter = getCalendarQuarter(dates[0]);
-
-  // Initial shares at Day 0
-  const totalWeight = holdings.reduce((sum, h) => sum + h.weight, 0) || 100;
-  for (const s of stockPrices) {
-    const p0 = s.prices[0];
-    const weightFrac = s.weight / totalWeight;
-    sharesHeld.set(s.symbol, (10.0 * weightFrac) / p0);
-  }
-
-  navPoints.push({
-    date: dates[0],
-    nav: 10.0,
-    dailyReturn: 0,
-    cumulativeReturn: 0,
-    benchmarkPrice: benchmarkHistories[0]?.[0] || 10.0,
-    benchmarkPrices: benchmarkHistories.map((history) => history[0] || 10.0),
-  });
-
-  for (let t = 1; t < totalDays; t++) {
-    const date = dates[t];
-    const quarter = getCalendarQuarter(date);
-    const isNewQuarter = quarter !== lastQuarter;
-    let didRebalance = false;
-
-    let dayNav = 0;
-    for (const s of stockPrices) {
-      const shares = sharesHeld.get(s.symbol) || 0;
-      dayNav += shares * s.prices[t];
-    }
-
-    if (mode === 'quarterly_rebalance' && isNewQuarter) {
-      didRebalance = true;
-      lastQuarter = quarter;
-      const newShares = new Map<string, number>();
-      for (const s of stockPrices) {
-        const weightFrac = s.weight / totalWeight;
-        newShares.set(s.symbol, (dayNav * weightFrac) / s.prices[t]);
-      }
-      sharesHeld = newShares;
-    }
-
-    currentNav = dayNav;
-    const roundedNav = Math.round(currentNav * 1000) / 1000;
-    const prevNav = navPoints[t - 1].nav;
-    const dailyReturnPct = ((roundedNav - prevNav) / prevNav) * 100;
-    const cumulativeReturnPct = ((roundedNav - 10.0) / 10.0) * 100;
-
-    navPoints.push({
-      date,
-      nav: roundedNav,
-      dailyReturn: Math.round(dailyReturnPct * 100) / 100,
-      cumulativeReturn: Math.round(cumulativeReturnPct * 100) / 100,
-      benchmarkPrice: benchmarkHistories[0]?.[t] || 10.0,
-      benchmarkPrices: benchmarkHistories.map((history) => history[t] || 10.0),
-      rebalancedToday: didRebalance,
-    });
-  }
-
-  return { navPoints, ipoNotices: [] };
 }
 
 /**

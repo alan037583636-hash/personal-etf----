@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
-import { withJsonError, withTimeout } from './utils/withJsonError';
+import { withJsonError, withTimeout } from './utils/withJsonError.ts';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 let cachedResult: { timestamp: number; changePercent: number; latestDate: string } | null = null;
@@ -23,17 +23,24 @@ async function handleMarketInsights(req: VercelRequest, res: VercelResponse) {
     const period1 = new Date();
     period1.setMonth(period1.getMonth() - 4);
     const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] });
-    const result = await withTimeout(
-      yahooFinance.chart('^TWII', {
-        period1: period1.toISOString().slice(0, 10),
-        interval: '1d',
-      }),
+    const result: unknown = await withTimeout(
+      yahooFinance.chart(
+        '^TWII',
+        {
+          period1: period1.toISOString().slice(0, 10),
+          interval: '1d',
+        },
+        { validateResult: false }
+      ),
       8000,
       'Yahoo Finance 大盤查詢'
     );
-    const quotes = (result.quotes || []).filter(
-      (quote) => quote.date && typeof quote.close === 'number' && quote.close > 0
-    );
+    const quotes = isRecord(result) && Array.isArray(result.quotes)
+      ? result.quotes.filter((quote): quote is Record<string, unknown> =>
+          isRecord(quote) &&
+          (quote.date instanceof Date || typeof quote.date === 'string' || typeof quote.date === 'number') &&
+          typeof quote.close === 'number' && quote.close > 0)
+      : [];
 
     if (quotes.length < 2) {
       return res.status(502).json({ success: false, error: '目前沒有足夠的大盤歷史資料。' });
@@ -45,7 +52,9 @@ async function handleMarketInsights(req: VercelRequest, res: VercelResponse) {
     if (typeof first.close !== 'number' || typeof last.close !== 'number' || first.close <= 0) {
       return res.status(502).json({ success: false, error: '目前沒有有效的大盤收盤價資料。' });
     }
-    const latestDate = last.date instanceof Date ? last.date.toISOString().slice(0, 10) : new Date(last.date).toISOString().slice(0, 10);
+    const latestDate = last.date instanceof Date
+      ? last.date.toISOString().slice(0, 10)
+      : new Date(last.date as string | number).toISOString().slice(0, 10);
     const changePercent = Math.round(((last.close / first.close - 1) * 100) * 100) / 100;
     cachedResult = { timestamp: Date.now(), changePercent, latestDate };
 
@@ -61,3 +70,7 @@ async function handleMarketInsights(req: VercelRequest, res: VercelResponse) {
 }
 
 export default withJsonError(handleMarketInsights, '/api/market-insights');
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}

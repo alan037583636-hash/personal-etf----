@@ -46,9 +46,10 @@
   - Automatic LocalStorage persistence across browser sessions.
 - **Professional Performance Metrics**:
   - Highlights **Current NAV**, **Total Return (%)**, **CAGR**, **MDD**, annualized volatility, the Sharpe ratio (1.5% risk-free rate), and beta against the selected benchmark (default `0050.TW`).
-- **AI Portfolio Insights with Provider Fallback**:
-  - Server-side Gemini → Groq → OpenRouter fallback with a built-in rules-based response when keys are absent or providers fail.
-  - Configure optional `GEMINI_API_KEY`, `GROQ_API_KEY`, and `OPENROUTER_API_KEY` environment variables on the server; never expose them through Vite client variables.
+- **Local Portfolio Insights**:
+  - Pros and risk warnings are calculated synchronously from current holdings, real historical performance, drawdown, and risk metrics; the dashboard does not depend on AI or market-insights API responses.
+- **Real-Data-Only Backtests**:
+  - Missing Yahoo Finance history is shown as an error; no synthetic daily prices or mock backtest data are used.
 - **Mobile-First Responsive Layout**:
   - Seamless layout folding and 2x2 / single-column responsive grids optimized for mobile viewports down to 320px.
 
@@ -111,6 +112,9 @@ npm start
 │       └── historical-prices/
 │           └── route.ts            # Next.js App Router Route Handler (Yahoo Finance & Caching)
 ├── src/
+│   ├── data/
+│   │   ├── presetPortfolios.ts   # Preset portfolio allocations
+│   │   └── twStockList.json      # Locally bundled official TWSE/TPEx stock and ETF directory
 │   ├── components/
 │   │   ├── Header.tsx              # Top bar, preset selector, and URL share button
 │   │   ├── MetricsCards.tsx        # 4 Core KPI cards with financial tooltips (CAGR, MDD)
@@ -121,7 +125,6 @@ npm start
 │   │   └── etf.ts                  # TypeScript models and interfaces
 │   ├── utils/
 │   │   ├── etfCalculator.ts        # Rebalancing engine, NAV compounding, and metrics math
-│   │   ├── mockStockData.ts        # Preset portfolios and high-fidelity fallback generator
 │   │   ├── stockMetadata.ts        # Taiwan symbol/name/sector mappings and classification
 │   │   └── exportCsv.ts            # UTF-8 BOM CSV export helper
 │   ├── App.tsx                     # Top-level state orchestration and URL synchronization

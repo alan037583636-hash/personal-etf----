@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
 import { PortfolioHolding, RealDataApiResponse } from '../types/etf';
-import { getStockPriceHistory } from '../utils/mockStockData';
 import { PieChart, BookOpen, TrendingUp } from 'lucide-react';
 import { getStockSector } from '../utils/stockMetadata';
 
@@ -24,6 +23,7 @@ const StockSparkline: React.FC<SparklineProps> = ({
   width = 75,
   height = 26,
 }) => {
+  const gradientId = useId().replace(/:/g, '');
   const { linePath, areaPath } = useMemo(() => {
     if (!prices || prices.length < 2) return { linePath: '', areaPath: '' };
 
@@ -60,8 +60,6 @@ const StockSparkline: React.FC<SparklineProps> = ({
   if (!linePath) return null;
 
   const strokeColor = isPositive ? '#dc2626' : '#10b981';
-  const gradientId = `spark_grad_${Math.random().toString(36).substring(2, 7)}`;
-
   return (
     <div className="relative shrink-0 overflow-hidden rounded py-0.5" title="近 3 個月還原權息收盤價走勢">
       <svg
@@ -165,18 +163,18 @@ export const HoldingsBreakdown: React.FC<HoldingsBreakdownProps> = ({ holdings, 
             let priceSeries: number[] = [];
             const realStock = realData?.stocks[h.symbol] || realData?.stocks[`${h.symbol}.TW`];
 
-            if (realStock && realStock.quotes && realStock.quotes.length > 0) {
+            if (realStock?.quotes?.length) {
               priceSeries = realStock.quotes.map((q) => q.adjClose ?? q.close);
-            } else {
-              priceSeries = getStockPriceHistory(h.symbol).prices;
             }
 
             // 【依要求取近 3 個月 (約 63 個交易日) 表現與圖形】
             const threeMonthSeries = priceSeries.length > 63 ? priceSeries.slice(-63) : priceSeries;
-            const start3MPrice = threeMonthSeries[0] || 100;
-            const lastPrice = threeMonthSeries[threeMonthSeries.length - 1] || 100;
-            const return3M = start3MPrice > 0 ? ((lastPrice - start3MPrice) / start3MPrice) * 100 : 0;
-            const isPos = return3M >= 0;
+            const start3MPrice = threeMonthSeries[0];
+            const lastPrice = threeMonthSeries[threeMonthSeries.length - 1];
+            const return3M = start3MPrice > 0 && lastPrice > 0
+              ? ((lastPrice - start3MPrice) / start3MPrice) * 100
+              : null;
+            const isPos = return3M !== null && return3M >= 0;
 
             return (
               <div key={h.id} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2 text-xs">
@@ -194,21 +192,22 @@ export const HoldingsBreakdown: React.FC<HoldingsBreakdownProps> = ({ holdings, 
 
                 {/* 近3個月微型走勢圖 (Sparkline) - 手機與桌機皆適應顯示 */}
                 <div className="flex items-center">
-                  <StockSparkline prices={threeMonthSeries} isPositive={isPos} width={75} height={24} />
+                  {return3M === null
+                    ? <span className="text-[11px] text-slate-400">行情不可用</span>
+                    : <StockSparkline prices={threeMonthSeries} isPositive={isPos} width={75} height={24} />}
                 </div>
 
                 {/* 近3個月漲跌幅與最新價 */}
                 <div className="flex flex-col items-end shrink-0">
                   <span
                     className={`font-mono font-bold tabular-nums ${
-                      isPos ? 'text-red-600' : 'text-emerald-600'
+                      return3M === null ? 'text-slate-400' : isPos ? 'text-red-600' : 'text-emerald-600'
                     }`}
                   >
-                    {isPos ? '+' : ''}
-                    {return3M.toFixed(1)}%
+                    {return3M === null ? '資料不足' : `${isPos ? '+' : ''}${return3M.toFixed(1)}%`}
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    最新: {lastPrice.toFixed(1)}
+                    {lastPrice === undefined ? '最新: --' : `最新: ${lastPrice.toFixed(1)}`}
                   </span>
                 </div>
               </div>

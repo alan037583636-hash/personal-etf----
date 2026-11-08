@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
-import { withJsonError, withTimeout } from './utils/withJsonError';
+import { withJsonError, withTimeout } from './utils/withJsonError.ts';
 
 // 記憶體快取 (In-Memory Cache Fallback)，在 Vercel Serverless 實例存活期間複用
 interface CacheEntry {
@@ -39,6 +39,10 @@ export interface StockPriceResponse {
   stocks: Record<string, StockPriceResult>;
   warning?: string;
   fetchedAt: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 // 符號標準化：台股純數字 (如 2454, 2308, 3711, 2356, 0050) 自動補上 .TW
@@ -108,34 +112,43 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     await Promise.all(
       symbolMap.map(async ({ original, yahooSymbol }) => {
         try {
-          const chartResult = await withTimeout(
-            yf.chart(yahooSymbol, { period1, interval: '1d' }),
+          const chartResult: unknown = await withTimeout(
+            yf.chart(yahooSymbol, { period1, interval: '1d' }, { validateResult: false }),
             8000,
             `Yahoo Finance ${yahooSymbol} 歷史報價查詢`
           );
 
-          const rawQuotes = chartResult.quotes || [];
+          const chart = isRecord(chartResult) ? chartResult : {};
+          const meta = isRecord(chart.meta) ? chart.meta : {};
+          const rawQuotes = Array.isArray(chart.quotes) ? chart.quotes : [];
           const validQuotes: HistoricalPricePoint[] = [];
 
-          for (const q of rawQuotes) {
-            if (q.date && typeof q.close === 'number' && !isNaN(q.close)) {
+          for (const value of rawQuotes) {
+            if (!isRecord(value)) continue;
+            const date = value.date;
+            const close = value.close;
+            if ((date instanceof Date || typeof date === 'string' || typeof date === 'number') &&
+                typeof close === 'number' && Number.isFinite(close)) {
               const dateStr =
-                q.date instanceof Date
-                  ? q.date.toISOString().split('T')[0]
-                  : new Date(q.date).toISOString().split('T')[0];
+                date instanceof Date
+                  ? date.toISOString().split('T')[0]
+                  : new Date(date).toISOString().split('T')[0];
+              if (!dateStr || dateStr === 'Invalid Date') continue;
 
               // 抓取並使用 Adj Close (還原權息收盤價)
               const adjCloseVal =
-                typeof q.adjclose === 'number' && !isNaN(q.adjclose) ? q.adjclose : q.close;
+                typeof value.adjclose === 'number' && Number.isFinite(value.adjclose)
+                  ? value.adjclose
+                  : close;
 
               validQuotes.push({
                 date: dateStr,
-                close: Math.round(q.close * 100) / 100,
+                close: Math.round(close * 100) / 100,
                 adjClose: Math.round(adjCloseVal * 100) / 100,
-                open: q.open ? Math.round(q.open * 100) / 100 : undefined,
-                high: q.high ? Math.round(q.high * 100) / 100 : undefined,
-                low: q.low ? Math.round(q.low * 100) / 100 : undefined,
-                volume: q.volume || undefined,
+                open: typeof value.open === 'number' ? Math.round(value.open * 100) / 100 : undefined,
+                high: typeof value.high === 'number' ? Math.round(value.high * 100) / 100 : undefined,
+                low: typeof value.low === 'number' ? Math.round(value.low * 100) / 100 : undefined,
+                volume: typeof value.volume === 'number' ? value.volume : undefined,
               });
               allDatesSet.add(dateStr);
             }
@@ -161,8 +174,9 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
           const resultObj: StockPriceResult = {
             symbol: original,
             querySymbol: yahooSymbol,
-            name: chartResult.meta?.shortName || chartResult.meta?.symbol || original,
-            currency: chartResult.meta?.currency || 'TWD',
+            name: (typeof meta.shortName === 'string' && meta.shortName) ||
+              (typeof meta.symbol === 'string' && meta.symbol) || original,
+            currency: typeof meta.currency === 'string' ? meta.currency : 'TWD',
             firstAvailableDate: firstDate,
             latestDate: lastDate,
             hasFullFiveYears,
@@ -180,6 +194,16 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
         }
       })
     );
+
+    const unavailableSymbols = symbolMap.filter(({ original }) =>
+      !stockResults[original]?.quotes.length
+    );
+    if (unavailableSymbols.length > 0) {
+      return res.status(502).json({
+        success: false,
+        error: `無法取得以下標的的真實歷史行情：${unavailableSymbols.map(({ original }) => original).join('、')}`,
+      });
+    }
 
     const sortedTradingDates = Array.from(allDatesSet).sort();
 

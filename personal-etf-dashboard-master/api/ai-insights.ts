@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { withJsonError } from './utils/withJsonError';
+import { withJsonError } from './utils/withJsonError.ts';
 
 type InsightProvider = 'Gemini' | 'Groq' | 'OpenRouter' | '內建規則';
 

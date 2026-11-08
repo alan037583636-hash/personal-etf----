@@ -25,7 +25,7 @@ import { PortfolioManager, DEFAULT_HOLDINGS } from './components/PortfolioManage
 import { HoldingsBreakdown } from './components/HoldingsBreakdown';
 import { InvestmentInsights } from './components/InvestmentInsights';
 import { findTaiwanStock, getStockSector, normalizeStockSymbol } from './utils/stockMetadata';
-import { Database, RefreshCw, AlertCircle, CheckCircle2, Check, Share2, Sparkles } from 'lucide-react';
+import { Database, RefreshCw, AlertCircle, CheckCircle2, Check } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'custom_etf_holdings_v2';
 const BENCHMARK_STORAGE_KEY = 'custom_etf_benchmarks_v1';
@@ -143,7 +143,6 @@ export default function App() {
   });
 
   // 4. 真實 Yahoo Finance API 資料狀態
-  const [useRealData, setUseRealData] = useState<boolean>(true);
   const [realData, setRealData] = useState<RealDataApiResponse | null>(null);
   const [isLoadingRealData, setIsLoadingRealData] = useState<boolean>(false);
   const [realDataError, setRealDataError] = useState<string | null>(null);
@@ -190,6 +189,7 @@ export default function App() {
   const fetchRealStockPrices = useCallback(async () => {
     if (!querySymbolsString) return;
     setIsLoadingRealData(true);
+    setRealData(null);
     setRealDataError(null);
 
     try {
@@ -204,10 +204,20 @@ export default function App() {
       if (!json.success) {
         throw new Error(json.warning || '無法獲取股票資料');
       }
+      const missingSymbols = querySymbolsString.split(',').filter((symbol) => {
+        const key = symbol.toUpperCase();
+        const stock = json.stocks[key] ||
+          json.stocks[key.replace(/\.(TW|TWO)$/i, '')] ||
+          json.stocks[`${key}.TW`];
+        return !stock?.quotes?.length;
+      });
+      if (missingSymbols.length > 0) {
+        throw new Error(`以下標的未取得真實歷史行情：${missingSymbols.join('、')}`);
+      }
       setRealData(json);
       setLastFetchedTime(new Date().toLocaleTimeString('zh-TW', { hour12: false }));
     } catch (err: any) {
-      console.warn('API 連線問題，啟用備援回測資料:', err?.message);
+      console.error('取得真實歷史行情失敗:', err);
       setRealDataError(err?.message || '暫時無法連線至外部 API');
     } finally {
       setIsLoadingRealData(false);
@@ -215,20 +225,18 @@ export default function App() {
   }, [querySymbolsString]);
 
   useEffect(() => {
-    if (useRealData) {
-      fetchRealStockPrices();
-    }
-  }, [useRealData, fetchRealStockPrices]);
+    fetchRealStockPrices();
+  }, [fetchRealStockPrices]);
 
   // 5. 核心淨值計算（依據使用者選擇之買進持有或每季再平衡模式）
   const { navPoints: allNavData, ipoNotices } = useMemo(() => {
     return calculateEtfNavWithRebalancing(
       holdings,
       rebalanceMode,
-      useRealData ? realData : null,
+      realData,
       benchmarkSymbols
     );
-  }, [holdings, rebalanceMode, useRealData, realData, benchmarkSymbols]);
+  }, [holdings, rebalanceMode, realData, benchmarkSymbols]);
 
   const totalPoints = allNavData.length;
 
@@ -257,11 +265,6 @@ export default function App() {
       metrics.cagr
     ),
     [allNavData, startIndex, endIndex, metrics.cagr, benchmarkSymbols]
-  );
-
-  const fullPeriodMetrics = useMemo(
-    () => calculateRangeMetrics(allNavData, 0, Math.max(0, allNavData.length - 1)),
-    [allNavData]
   );
 
   const todayChange = useMemo(() => {
@@ -371,7 +374,7 @@ export default function App() {
               <span>股價數據:</span>
             </div>
 
-            {useRealData && realData && !isLoadingRealData ? (
+            {realData && !isLoadingRealData ? (
               <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 font-medium">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 Yahoo Finance 真實 Adj Close 還原權息收盤價 ({realData.tradingDates.length} 交易日)
@@ -382,13 +385,13 @@ export default function App() {
                 正在自 Yahoo Finance 獲取 5 年還原權息行情...
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 font-medium">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                5年模擬回測模式
+              <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                尚無真實行情，不會以模擬資料替代
               </span>
             )}
 
-            {lastFetchedTime && useRealData && (
+            {lastFetchedTime && realData && (
               <span className="text-slate-400 font-mono text-[11px] hidden md:inline">
                 更新: {lastFetchedTime} (伺服器快取 1小時)
               </span>
@@ -396,32 +399,24 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            {useRealData && (
-              <button
-                type="button"
-                onClick={fetchRealStockPrices}
-                disabled={isLoadingRealData}
-                className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
-                title="重新取得最新行情"
-              >
-                <RefreshCw className={`w-3 h-3 ${isLoadingRealData ? 'animate-spin' : ''}`} />
-                <span>重新獲取</span>
-              </button>
-            )}
-
             <button
               type="button"
-              onClick={() => setUseRealData(!useRealData)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
-                useRealData
-                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
+              onClick={fetchRealStockPrices}
+              disabled={isLoadingRealData}
+              className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
+              title="重新取得最新真實行情"
             >
-              {useRealData ? '切換為模擬' : '切換為 Yahoo Finance'}
+              <RefreshCw className={`w-3 h-3 ${isLoadingRealData ? 'animate-spin' : ''}`} />
+              <span>重新獲取</span>
             </button>
           </div>
         </div>
+
+        {realDataError && (
+          <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            真實股價資料取得失敗：{realDataError}。目前不顯示假行情或模擬回測結果。
+          </div>
+        )}
 
         {/* 上市不足 5 年警告提示 */}
         {ipoNotices.length > 0 && (
@@ -450,6 +445,7 @@ export default function App() {
           todayChange={todayChange.amount}
           todayChangePercent={todayChange.percent}
           riskMetrics={riskMetrics}
+          hasMarketData={Boolean(realData?.tradingDates.length)}
         />
 
         {/* 5. 互動式淨值走勢與對比圖表 (含百分比 Y 軸切換、強化迷你時間軸滑桿、起始日歸一) */}
@@ -475,7 +471,12 @@ export default function App() {
         {/* 3. 產業分佈與成分股微型趨勢圖 (Sparklines) */}
         <HoldingsBreakdown holdings={holdings} realData={realData} />
 
-        <InvestmentInsights holdings={holdings} realData={realData} metrics={fullPeriodMetrics} />
+        <InvestmentInsights
+          holdings={holdings}
+          realData={realData}
+          metrics={metrics}
+          riskMetrics={riskMetrics}
+        />
       </main>
 
       {/* 頁尾版權與免責聲明 */}

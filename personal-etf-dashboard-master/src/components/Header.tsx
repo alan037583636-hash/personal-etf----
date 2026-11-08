@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrendingUp, RotateCcw, Download, Sparkles, Share2, Check } from 'lucide-react';
-import { PRESET_PORTFOLIOS } from '../utils/mockStockData';
+import { PRESET_PORTFOLIOS } from '../data/presetPortfolios';
 import { PortfolioHolding } from '../types/etf';
 
 interface HeaderProps {

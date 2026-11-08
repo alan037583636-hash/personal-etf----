@@ -11,6 +11,7 @@ interface MetricsCardsProps {
   todayChange: number | null;
   todayChangePercent: number | null;
   riskMetrics: RiskMetrics;
+  hasMarketData: boolean;
 }
 
 export const MetricsCards: React.FC<MetricsCardsProps> = ({
@@ -22,6 +23,7 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
   todayChange,
   todayChangePercent,
   riskMetrics,
+  hasMarketData,
 }) => {
   const isRangePositive = metrics.rangeReturn >= 0;
   const isCagrPositive = metrics.cagr >= 0;
@@ -40,7 +42,7 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
         <div className="my-1.5 sm:my-2 flex flex-wrap items-end justify-between gap-2">
           <div className="flex items-baseline gap-1.5 sm:gap-2">
           <span className="text-4xl sm:text-5xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
-            {metrics.currentNav.toFixed(2)}
+            {hasMarketData ? metrics.currentNav.toFixed(2) : '--'}
           </span>
           <span className="text-xs sm:text-sm font-medium text-slate-500">元</span>
           </div>
@@ -73,13 +75,17 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
               is5YearPositive ? 'text-red-600' : 'text-emerald-600'
             }`}
           >
-            {is5YearPositive ? (
-              <ArrowUpRight className="w-3.5 h-3.5 inline" />
-            ) : (
-              <ArrowDownRight className="w-3.5 h-3.5 inline" />
-            )}
-            {is5YearPositive ? '+' : ''}
-            {metrics.allTimeReturn.toFixed(2)}%
+            {hasMarketData ? (
+              <>
+                {is5YearPositive ? (
+                  <ArrowUpRight className="w-3.5 h-3.5 inline" />
+                ) : (
+                  <ArrowDownRight className="w-3.5 h-3.5 inline" />
+                )}
+                {is5YearPositive ? '+' : ''}
+                {metrics.allTimeReturn.toFixed(2)}%
+              </>
+            ) : '--'}
           </span>
         </div>
       </div>
@@ -99,23 +105,28 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
               isRangePositive ? 'text-red-600' : 'text-emerald-600'
             }`}
           >
-            {isRangePositive ? (
-              <ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
-            ) : (
-              <ArrowDownRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
-            )}
-            <span>
-              {isRangePositive ? '+' : ''}
-              {metrics.rangeReturn.toFixed(2)}%
-            </span>
+            {hasMarketData ? (
+              <>
+                {isRangePositive ? (
+                  <ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
+                ) : (
+                  <ArrowDownRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
+                )}
+                <span>
+                  {isRangePositive ? '+' : ''}
+                  {metrics.rangeReturn.toFixed(2)}%
+                </span>
+              </>
+            ) : '--'}
           </div>
         </div>
 
         <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">
           <span className="text-slate-400 truncate">對比 {benchmarkSymbol}:</span>
           <span className="font-mono font-semibold text-slate-700 tabular-nums shrink-0">
-            {metrics.benchmarkRangeReturn !== undefined && metrics.benchmarkRangeReturn >= 0 ? '+' : ''}
-            {metrics.benchmarkRangeReturn !== undefined ? metrics.benchmarkRangeReturn.toFixed(2) : '0.00'}%
+            {hasMarketData && metrics.benchmarkRangeReturn !== undefined
+              ? `${metrics.benchmarkRangeReturn >= 0 ? '+' : ''}${metrics.benchmarkRangeReturn.toFixed(2)}%`
+              : '--'}
           </span>
         </div>
       </div>
@@ -153,8 +164,7 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
             }`}
           >
             <span>
-              {isCagrPositive ? '+' : ''}
-              {metrics.cagr.toFixed(2)}%
+              {hasMarketData ? `${isCagrPositive ? '+' : ''}${metrics.cagr.toFixed(2)}%` : '--'}
             </span>
           </div>
         </div>
@@ -195,14 +205,14 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
 
         <div className="my-1.5 sm:my-2">
           <div className="text-2xl sm:text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-red-600">
-            -{metrics.maxDrawdown.toFixed(2)}%
+            {hasMarketData ? `-${metrics.maxDrawdown.toFixed(2)}%` : '--'}
           </div>
         </div>
 
         <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">
           <span className="text-slate-400 truncate">區間最低價:</span>
           <span className="font-mono font-semibold text-slate-700 tabular-nums shrink-0">
-            {metrics.rangeLow.toFixed(2)} 元
+            {hasMarketData ? `${metrics.rangeLow.toFixed(2)} 元` : '--'}
           </span>
         </div>
       </div>

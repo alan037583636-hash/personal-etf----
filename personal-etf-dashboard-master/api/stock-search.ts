@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
-import { findTaiwanStock } from '../src/utils/stockMetadata';
-import { withJsonError, withTimeout } from './utils/withJsonError';
+import { withJsonError, withTimeout } from './utils/withJsonError.ts';
 
 interface StockSearchResult {
   symbol: string;
@@ -55,17 +54,6 @@ async function handleStockSearch(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ success: true, results: cached.results });
   }
 
-  const knownStock = findTaiwanStock(query);
-  if (knownStock) {
-    const result = [{
-      symbol: `${knownStock.code}.${knownStock.exchange || 'TW'}`,
-      name: knownStock.name,
-      sector: knownStock.sector,
-    }];
-    cache.set(cacheKey, { timestamp: Date.now(), results: result });
-    return res.status(200).json({ success: true, results: result });
-  }
-
   try {
     const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] });
     const isTaiwanCode = /^\d{4,6}(?:\.(?:TW|TWO))?$/i.test(query);
@@ -75,21 +63,26 @@ async function handleStockSearch(req: VercelRequest, res: VercelResponse) {
         if (!isRecord(value)) return [];
         const symbol = typeof value.symbol === 'string' ? value.symbol : '';
         if (!symbol) return [];
-        const stock = findTaiwanStock(symbol);
         const longname = typeof value.longname === 'string' ? value.longname : '';
         const shortname = typeof value.shortname === 'string' ? value.shortname : '';
         const chineseName = [shortname, longname].find((name) => /[\u3400-\u9fff]/.test(name));
-        const name = stock?.name || chineseName || longname || shortname || symbol;
-        return [{ symbol, name, sector: stock?.sector }];
+        const name = chineseName || longname || shortname || symbol;
+        return [{ symbol, name }];
       });
 
     const searchQuotes = async (searchQuery: string): Promise<StockSearchResult[]> => {
-      const searchResult = await withTimeout(
-        yahooFinance.search(searchQuery, { quotesCount: 10, newsCount: 0 }),
+      const searchResult: unknown = await withTimeout(
+        yahooFinance.search(
+          searchQuery,
+          { quotesCount: 10, newsCount: 0 },
+          { validateResult: false }
+        ),
         8000,
         'Yahoo Finance 搜尋'
       );
-      return convertQuotes(searchResult.quotes);
+      return convertQuotes(
+        isRecord(searchResult) && Array.isArray(searchResult.quotes) ? searchResult.quotes : []
+      );
     };
 
     let quotes: StockSearchResult[] = [];
@@ -147,18 +140,30 @@ async function handleStockSearch(req: VercelRequest, res: VercelResponse) {
     }
 
     const enrichedResults = await Promise.all(results.map(async (result) => {
-      const stock = findTaiwanStock(result.symbol) || findTaiwanStock(result.name);
-      if (stock) return { ...result, name: stock.name, sector: stock.sector };
       if (!/\.(TW|TWO)$/i.test(result.symbol)) return result;
       try {
-        const profile = await withTimeout(
-          yahooFinance.quoteSummary(result.symbol, { modules: ['assetProfile', 'summaryProfile'] }),
+        const profile: unknown = await withTimeout(
+          yahooFinance.quoteSummary(
+            result.symbol,
+            { modules: ['assetProfile', 'summaryProfile'] },
+            { validateResult: false }
+          ),
           8000,
           `Yahoo Finance ${result.symbol} 產業查詢`
         );
-        const industry = profile.assetProfile?.industry || profile.summaryProfile?.industry || '';
-        const sector = profile.assetProfile?.sector || profile.summaryProfile?.sector || '';
-        return { ...result, sector: sectorFromProfile(industry, sector) };
+        const assetProfile = isRecord(profile) && isRecord(profile.assetProfile)
+          ? profile.assetProfile
+          : {};
+        const summaryProfile = isRecord(profile) && isRecord(profile.summaryProfile)
+          ? profile.summaryProfile
+          : {};
+        const industry = typeof assetProfile.industry === 'string'
+          ? assetProfile.industry
+          : typeof summaryProfile.industry === 'string' ? summaryProfile.industry : '';
+        const sectorName = typeof assetProfile.sector === 'string'
+          ? assetProfile.sector
+          : typeof summaryProfile.sector === 'string' ? summaryProfile.sector : '';
+        return { ...result, sector: sectorFromProfile(industry, sectorName) };
       } catch (error) {
         console.warn(`讀取 ${result.symbol} 產業資料失敗:`, error);
         return result;
