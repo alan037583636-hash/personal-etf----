@@ -9,7 +9,7 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時快取
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 分鐘快取
 
 export interface HistoricalPricePoint {
   date: string;
@@ -63,6 +63,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     'Access-Control-Allow-Headers',
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
+  res.setHeader('Cache-Control', 'no-store');
 
   // 處理瀏覽器 Preflight 預檢請求
   if (req.method === 'OPTIONS') {
@@ -74,6 +75,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     const symbolsParam = Array.isArray(rawParam)
       ? rawParam.join(',')
       : (rawParam as string) || '2454.TW,2308.TW,3711.TW,2356.TW,0050.TW';
+    const forceRefresh = req.query?.refresh === '1';
 
     const rawSymbols = symbolsParam
       .split(',')
@@ -92,9 +94,8 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
 
     const cached = cache.get(cacheKey);
     const now = Date.now();
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    if (!forceRefresh && cached && now - cached.timestamp < CACHE_TTL_MS) {
       res.setHeader('X-Cache-Status', 'HIT');
-      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=7200');
       return res.status(200).json(cached.data);
     }
 
@@ -219,9 +220,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
       timestamp: now,
       data: responsePayload,
     });
-
     res.setHeader('X-Cache-Status', 'MISS');
-    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=7200');
     return res.status(200).json(responsePayload);
   } catch (error: any) {
     console.error('API /api/historical-prices error:', error);

@@ -186,14 +186,18 @@ export default function App() {
   }, [holdings, benchmarkSymbols]);
 
   // 向 API 獲取 5 年每日 Adj Close 資料
-  const fetchRealStockPrices = useCallback(async () => {
+  const fetchRealStockPrices = useCallback(async (forceRefresh = false) => {
     if (!querySymbolsString) return;
     setIsLoadingRealData(true);
     setRealData(null);
     setRealDataError(null);
 
     try {
-      const response = await fetch(`/api/historical-prices?symbols=${encodeURIComponent(querySymbolsString)}`);
+      const refreshParam = forceRefresh ? '&refresh=1' : '';
+      const response = await fetch(
+        `/api/historical-prices?symbols=${encodeURIComponent(querySymbolsString)}${refreshParam}`,
+        { cache: 'no-store' }
+      );
       if (!response.ok) {
         throw new Error(`API 伺服器狀態碼 ${response.status}`);
       }
@@ -377,7 +381,7 @@ export default function App() {
             {realData && !isLoadingRealData ? (
               <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 font-medium">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                Yahoo Finance 真實 Adj Close 還原權息收盤價 ({realData.tradingDates.length} 交易日)
+                Yahoo Finance 真實 Adj Close 還原權息收盤價（{realData.tradingDates.length} 交易日，最新 {realData.tradingDates[realData.tradingDates.length - 1] || '--'}）
               </span>
             ) : isLoadingRealData ? (
               <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 font-medium animate-pulse">
@@ -393,7 +397,7 @@ export default function App() {
 
             {lastFetchedTime && realData && (
               <span className="text-slate-400 font-mono text-[11px] hidden md:inline">
-                更新: {lastFetchedTime} (伺服器快取 1小時)
+                更新: {lastFetchedTime} (伺服器快取 15 分鐘)
               </span>
             )}
           </div>
@@ -401,7 +405,7 @@ export default function App() {
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               type="button"
-              onClick={fetchRealStockPrices}
+              onClick={() => fetchRealStockPrices(true)}
               disabled={isLoadingRealData}
               className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
               title="重新取得最新真實行情"
