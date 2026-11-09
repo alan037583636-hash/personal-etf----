@@ -54,6 +54,25 @@ function normalizeSymbol(symbol: string): { original: string; yahooSymbol: strin
   return { original: clean, yahooSymbol: clean };
 }
 
+function logLatestQuoteDates(
+  symbols: Array<{ original: string; yahooSymbol: string }>,
+  stocks: Record<string, StockPriceResult>,
+  cacheStatus: 'HIT' | 'MISS'
+): void {
+  console.log(
+    `[historical-prices] 個別標的最新報價日期（尚未合併交易日，cache=${cacheStatus}）:`,
+    symbols.map(({ original, yahooSymbol }) => {
+      const quotes = stocks[original]?.quotes || [];
+      return {
+        symbol: original,
+        querySymbol: yahooSymbol,
+        latestDate: quotes[quotes.length - 1]?.date || null,
+        quoteCount: quotes.length,
+      };
+    })
+  );
+}
+
 async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
   // 設定全域 CORS 標頭，避免跨域請求遭阻擋
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -96,6 +115,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     const now = Date.now();
     if (!forceRefresh && cached && now - cached.timestamp < CACHE_TTL_MS) {
       res.setHeader('X-Cache-Status', 'HIT');
+      logLatestQuoteDates(symbolMap, cached.data.stocks, 'HIT');
       return res.status(200).json(cached.data);
     }
 
@@ -195,6 +215,8 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
         }
       })
     );
+
+    logLatestQuoteDates(symbolMap, stockResults, 'MISS');
 
     const unavailableSymbols = symbolMap.filter(({ original }) =>
       !stockResults[original]?.quotes.length

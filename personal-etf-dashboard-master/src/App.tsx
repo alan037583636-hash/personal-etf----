@@ -194,8 +194,9 @@ export default function App() {
 
     try {
       const refreshParam = forceRefresh ? '&refresh=1' : '';
+      const cacheBustParam = `&t=${Date.now()}`;
       const response = await fetch(
-        `/api/historical-prices?symbols=${encodeURIComponent(querySymbolsString)}${refreshParam}`,
+        `/api/historical-prices?symbols=${encodeURIComponent(querySymbolsString)}${refreshParam}${cacheBustParam}`,
         { cache: 'no-store' }
       );
       if (!response.ok) {
