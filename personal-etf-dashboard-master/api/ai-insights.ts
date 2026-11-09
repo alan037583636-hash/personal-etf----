@@ -16,14 +16,30 @@ interface InsightInput {
   recentPerformance: Array<{ name: string; weight: number; returnPercent: number; annualizedVolatility: number }>;
   market: { changePercent: number | null; latestDate: string | null };
   metrics: { currentNav: number; cagr: number; maxDrawdown: number; allTimeReturn: number };
+  riskMetrics: { annualizedVolatility: number | null; sharpeRatio: number | null; beta: number | null };
 }
 
 interface InsightResponse {
   summary: string;
   pros: string[];
-  risks: string[];
+  cons: string[];
   provider: InsightProvider;
 }
+
+const SYSTEM_PROMPT = `你是一位擁有十年經驗的專業台股量化分析師與基金經理人。我會提供一組投資組合的歷史回測數據（包含成分股、權重、產業分佈、年化報酬率 CAGR、最大回撤 MDD 等）。
+請根據數據給出精準的診斷，嚴格遵守以下原則：
+
+- 拒絕廢話：不要單純重複數字，要給出背後的見解（例如：不要只說「半導體佔25%」，要說「產業集中於半導體達25%，若遇科技股資金輪動，抗跌能力將面臨考驗」）。
+- 優勢 (Pros)：點出獲利動能強弱、或是產業佈局的分散程度是否具備防禦力。
+- 風險 (Cons)：必須將 MDD 具象化（例如「歷史最大回撤高達 -35.91%，意味著若投入 100 萬，在最差情境下曾縮水至約 64 萬」），並點出高波動或單一事件影響的風險。
+- 總結 (Summary)：給出一句精準的總結與具體行動建議（例如是否需要季再平衡，或是加入防禦型類股）。
+- 僅依據提供的資料推論，不得捏造數據或市場事件；明確指出歷史績效不代表未來表現。
+你必須且只能回傳一個乾淨的 JSON 格式，絕對不要包含任何 Markdown 標記（如 \`\`\`json），結構如下：
+{
+"pros": ["優勢洞察1", "優勢洞察2", "優勢洞察3"],
+"cons": ["風險洞察1", "風險洞察2", "風險洞察3"],
+"summary": "一句核心的 AI 總結與行動建議"
+}`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -33,13 +49,19 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function nullableFiniteNumber(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return finiteNumber(value) ?? undefined;
+}
+
 function safeText(value: unknown, maxLength = 100): string {
   return typeof value === 'string' ? value.slice(0, maxLength) : '';
 }
 
 function parseInput(value: Record<string, unknown>): InsightInput | null {
   if (!Array.isArray(value.holdings) || !Array.isArray(value.sectors) ||
-      !Array.isArray(value.recentPerformance) || !isRecord(value.metrics) || !isRecord(value.market)) {
+      !Array.isArray(value.recentPerformance) || !isRecord(value.metrics) || !isRecord(value.market) ||
+      !isRecord(value.riskMetrics)) {
     return null;
   }
 
@@ -71,10 +93,14 @@ function parseInput(value: Record<string, unknown>): InsightInput | null {
   const cagr = finiteNumber(value.metrics.cagr);
   const maxDrawdown = finiteNumber(value.metrics.maxDrawdown);
   const allTimeReturn = finiteNumber(value.metrics.allTimeReturn);
+  const annualizedVolatility = nullableFiniteNumber(value.riskMetrics.annualizedVolatility);
+  const sharpeRatio = nullableFiniteNumber(value.riskMetrics.sharpeRatio);
+  const beta = nullableFiniteNumber(value.riskMetrics.beta);
   const changePercent = value.market.changePercent === null
     ? null
     : finiteNumber(value.market.changePercent);
   if (currentNav === null || cagr === null || maxDrawdown === null || allTimeReturn === null ||
+      annualizedVolatility === undefined || sharpeRatio === undefined || beta === undefined ||
       (value.market.changePercent !== null && changePercent === null)) {
     return null;
   }
@@ -88,22 +114,27 @@ function parseInput(value: Record<string, unknown>): InsightInput | null {
       latestDate: typeof value.market.latestDate === 'string' ? value.market.latestDate.slice(0, 10) : null,
     },
     metrics: { currentNav, cagr, maxDrawdown, allTimeReturn },
+    riskMetrics: { annualizedVolatility, sharpeRatio, beta },
   };
 }
 
 function parseInsight(text: string, provider: InsightProvider): InsightResponse {
-  const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
   const parsed: unknown = JSON.parse(cleaned);
   if (!isRecord(parsed) || typeof parsed.summary !== 'string' ||
-      !Array.isArray(parsed.pros) || !Array.isArray(parsed.risks)) {
+      !Array.isArray(parsed.pros) || !Array.isArray(parsed.cons)) {
     throw new Error(`${provider} 回傳格式不符合預期`);
   }
   const pros = parsed.pros.filter((item): item is string => typeof item === 'string').slice(0, 6);
-  const risks = parsed.risks.filter((item): item is string => typeof item === 'string').slice(0, 6);
-  if (!parsed.summary.trim() || pros.length === 0 || risks.length === 0) {
+  const cons = parsed.cons.filter((item): item is string => typeof item === 'string').slice(0, 6);
+  if (!parsed.summary.trim() || pros.length === 0 || cons.length === 0) {
     throw new Error(`${provider} 回傳內容不完整`);
   }
-  return { summary: parsed.summary.trim(), pros, risks, provider };
+  return { summary: parsed.summary.trim(), pros, cons, provider };
 }
 
 function createRuleBasedInsight(input: InsightInput): InsightResponse {
@@ -113,7 +144,7 @@ function createRuleBasedInsight(input: InsightInput): InsightResponse {
     null
   );
   const summaryParts = [
-    `目前組合淨值 ${input.metrics.currentNav.toFixed(2)} 元，5 年 CAGR 約 ${input.metrics.cagr.toFixed(2)}%。`,
+    `目前組合淨值 ${input.metrics.currentNav.toFixed(2)} 元，查詢區間 CAGR 約 ${input.metrics.cagr.toFixed(2)}%。`,
   ];
   if (topSector) summaryParts.push(`權重最高的產業為${topSector.sector}（${topSector.percent.toFixed(1)}%）。`);
 
@@ -122,29 +153,40 @@ function createRuleBasedInsight(input: InsightInput): InsightResponse {
       ? `${bestPerformer.name}近期觀察區間報酬 ${bestPerformer.returnPercent >= 0 ? '+' : ''}${bestPerformer.returnPercent.toFixed(1)}%，為目前可取得資料中表現較佳的成分股。`
       : '目前成分股資料已提供配置基礎，建議持續追蹤各標的及產業變化。',
   ];
-  if (input.metrics.cagr > 0) pros.push(`歷史 5 年 CAGR 為正（${input.metrics.cagr.toFixed(2)}%），但不代表未來報酬。`);
+  if (input.metrics.cagr > 0) pros.push(`查詢區間 CAGR 為正（${input.metrics.cagr.toFixed(2)}%），但不代表未來報酬。`);
   if (input.market.changePercent !== null) {
     pros.push(`台灣加權指數近約 3 個月變動 ${input.market.changePercent >= 0 ? '+' : ''}${input.market.changePercent.toFixed(2)}%。`);
   }
 
-  const risks = [`5 年最大回撤約 ${input.metrics.maxDrawdown.toFixed(2)}%，市場下跌時淨值仍可能有明顯波動。`];
+  const remainingValue = Math.max(0, 1 - input.metrics.maxDrawdown / 100);
+  const cons = [
+    `查詢區間最大回撤約 -${input.metrics.maxDrawdown.toFixed(2)}%；以 100 萬元投入換算，歷史最差期間資產曾降至約 ${(remainingValue * 100).toFixed(1)} 萬元，實際未來跌幅可能不同。`,
+  ];
   if (topSector && topSector.percent >= 35) {
-    risks.push(`${topSector.sector}權重約 ${topSector.percent.toFixed(1)}%，產業集中可能放大相關供應鏈風險。`);
+    cons.push(`${topSector.sector}權重約 ${topSector.percent.toFixed(1)}%，產業集中可能放大相關供應鏈風險。`);
   }
   if (input.recentPerformance.some((item) => item.annualizedVolatility >= 45)) {
-    risks.push('部分成分股近期年化波動度偏高，請留意短期價格起伏。');
+    cons.push('部分成分股近期年化波動度偏高，請留意短期價格起伏。');
   }
-  return { summary: summaryParts.join(''), pros, risks, provider: '內建規則' };
+  if (input.riskMetrics.annualizedVolatility !== null) {
+    cons.push(`組合年化波動度約 ${(input.riskMetrics.annualizedVolatility * 100).toFixed(2)}%，市場劇烈震盪時淨值可能快速變動。`);
+  }
+  while (cons.length < 3) {
+    cons.push('歷史回測僅反映特定期間與資料條件，無法涵蓋所有市場情境，宜定期檢視風險承受度。');
+  }
+  while (pros.length < 3) {
+    pros.push('可依既定頻率檢視各成分股權重，讓配置偏離目標時能及時調整。');
+  }
+  return {
+    summary: `${summaryParts.join('')} 建議依投資目標定期檢視並再平衡；歷史表現不代表未來結果。`,
+    pros: pros.slice(0, 3),
+    cons: cons.slice(0, 3),
+    provider: '內建規則',
+  };
 }
 
 function createPrompt(input: InsightInput): string {
-  return [
-    '你是審慎、專業的 ETF 組合分析助理。請只根據提供資料，以繁體中文撰寫，不可捏造市場事實或保證報酬。',
-    '請只回傳 JSON，不要 Markdown，格式為 {"summary":"整體評語","pros":["近期潛在優勢"],"risks":["近期風險警語"]}。',
-    'pros 與 risks 各至少 1 項，語氣客觀，並提醒歷史績效不代表未來結果。',
-    '投資組合資料：',
-    JSON.stringify(input),
-  ].join('\n');
+  return `投資組合歷史回測資料：\n${JSON.stringify(input)}`;
 }
 
 async function requestWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -164,6 +206,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0.4 },
       }),
@@ -197,7 +240,7 @@ async function callOpenAiCompatible(
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: '請依指示以繁體中文回傳有效 JSON。' },
+        { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
       response_format: { type: 'json_object' },

@@ -198,6 +198,24 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
             <Plus className="w-3.5 h-3.5" />
             <span>新增持股</span>
           </button>
+
+          <div className="flex items-center gap-2">
+            {saveToast && (
+              <span role="status" className="text-xs font-semibold text-emerald-600 transition-opacity">
+                已成功儲存！
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={handleManualSave}
+              className="px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5 whitespace-nowrap bg-slate-900 hover:bg-slate-800 text-white cursor-pointer active:scale-98"
+              title="儲存目前持股與權重設定"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>套用設定 (LocalStorage)</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -456,24 +474,6 @@ export const PortfolioManager: React.FC<PortfolioManagerProps> = ({
               <span>投資組合已就緒，各股權重與最新行情將自動保存至瀏覽器 LocalStorage。</span>
             </p>
           )}
-        </div>
-
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          {saveToast && (
-            <span className="text-xs font-semibold text-emerald-600 transition-opacity">
-              已成功儲存！
-            </span>
-          )}
-
-          <button
-            type="button"
-            onClick={handleManualSave}
-            className="px-4 py-2 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-1.5 whitespace-nowrap bg-slate-900 hover:bg-slate-800 text-white cursor-pointer active:scale-98"
-            title="儲存目前持股與權重設定"
-          >
-            <Save className="w-3.5 h-3.5" />
-            <span>套用設定 (LocalStorage)</span>
-          </button>
         </div>
       </div>
     </div>

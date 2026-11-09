@@ -25,15 +25,23 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
   riskMetrics,
   hasMarketData,
 }) => {
-  const isRangePositive = metrics.rangeReturn >= 0;
+  const isRangePositive = metrics.rangeReturn > 0;
+  const isRangeNegative = metrics.rangeReturn < 0;
   const isCagrPositive = metrics.cagr >= 0;
-  const is5YearPositive = metrics.allTimeReturn >= 0;
+  const is5YearPositive = metrics.allTimeReturn > 0;
+  const is5YearNegative = metrics.allTimeReturn < 0;
 
   return (
     <div className="space-y-2.5 sm:space-y-3">
     <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
       {/* 1. 最新淨值 (Current NAV) */}
-      <div className="col-span-2 p-4 sm:p-5 bg-white rounded-xl border border-red-200 shadow-[0_0_22px_rgba(239,68,68,0.10)] flex flex-col justify-between">
+      <div className={`col-span-2 p-4 sm:p-5 rounded-xl border shadow-2xs flex flex-col justify-between ${
+        is5YearPositive
+          ? 'border-red-300 bg-red-50'
+          : is5YearNegative
+            ? 'border-green-300 bg-green-50'
+            : 'border-slate-200 bg-white'
+      }`}>
         <div className="flex items-center justify-between">
           <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate">最新淨值 (NAV)</span>
           <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono">基期 10.00 元</span>
@@ -41,7 +49,9 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
 
         <div className="my-1.5 sm:my-2 flex flex-wrap items-end justify-between gap-2">
           <div className="flex items-baseline gap-1.5 sm:gap-2">
-          <span className="text-4xl sm:text-5xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
+          <span className={`text-4xl sm:text-5xl font-extrabold font-mono tracking-tight tabular-nums ${
+            is5YearPositive ? 'text-red-600' : is5YearNegative ? 'text-green-600' : 'text-slate-900'
+          }`}>
             {hasMarketData ? metrics.currentNav.toFixed(2) : '--'}
           </span>
           <span className="text-xs sm:text-sm font-medium text-slate-500">元</span>
@@ -72,16 +82,16 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
           <span className="text-slate-400 truncate">5年總報酬:</span>
           <span
             className={`font-mono font-bold tabular-nums flex items-center shrink-0 ${
-              is5YearPositive ? 'text-red-600' : 'text-emerald-600'
+              is5YearPositive ? 'text-red-600' : is5YearNegative ? 'text-green-600' : 'text-slate-500'
             }`}
           >
             {hasMarketData ? (
               <>
                 {is5YearPositive ? (
                   <ArrowUpRight className="w-3.5 h-3.5 inline" />
-                ) : (
+                ) : is5YearNegative ? (
                   <ArrowDownRight className="w-3.5 h-3.5 inline" />
-                )}
+                ) : null}
                 {is5YearPositive ? '+' : ''}
                 {metrics.allTimeReturn.toFixed(2)}%
               </>
@@ -91,7 +101,13 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
       </div>
 
       {/* 2. 累積報酬率 (Total Return, %) */}
-      <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+      <div className={`p-3.5 sm:p-4 rounded-xl border shadow-2xs flex flex-col justify-between ${
+        isRangePositive
+          ? 'border-red-300 bg-red-50'
+          : isRangeNegative
+            ? 'border-green-300 bg-green-50'
+            : 'border-slate-200 bg-white'
+      }`}>
         <div className="flex items-center justify-between">
           <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate" title={`${rangeLabel} 累積報酬率`}>
             {rangeLabel} 累積報酬
@@ -102,16 +118,16 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
         <div className="my-1.5 sm:my-2">
           <div
             className={`text-2xl sm:text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums flex items-baseline gap-1 ${
-              isRangePositive ? 'text-red-600' : 'text-emerald-600'
+              isRangePositive ? 'text-red-600' : isRangeNegative ? 'text-green-600' : 'text-slate-500'
             }`}
           >
             {hasMarketData ? (
               <>
                 {isRangePositive ? (
                   <ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
-                ) : (
+                ) : isRangeNegative ? (
                   <ArrowDownRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
-                )}
+                ) : null}
                 <span>
                   {isRangePositive ? '+' : ''}
                   {metrics.rangeReturn.toFixed(2)}%

@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Lightbulb } from 'lucide-react';
 import { PerformanceMetrics, PortfolioHolding, RealDataApiResponse, RiskMetrics } from '../types/etf';
+import { readJsonResponse } from '../utils/http';
 import { getStockSector } from '../utils/stockMetadata';
 
 interface InvestmentInsightsProps {
@@ -15,6 +16,30 @@ interface HoldingPerformance {
   weight: number;
   returnPercent: number;
   annualizedVolatility: number;
+}
+
+interface Diagnosis {
+  summary: string;
+  pros: string[];
+  cons: string[];
+  provider: string;
+}
+
+interface DiagnosisResponse {
+  success: boolean;
+  summary?: string;
+  pros?: string[];
+  cons?: string[];
+  provider?: string;
+  error?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isDiagnosisResponse(value: unknown): value is DiagnosisResponse {
+  return isRecord(value) && typeof value.success === 'boolean';
 }
 
 function getRecentPerformance(
@@ -41,109 +66,118 @@ function getRecentPerformance(
   };
 }
 
+function parseDiagnosisResponse(value: unknown): Diagnosis {
+  if (!isDiagnosisResponse(value) || !value.success ||
+      typeof value.summary !== 'string' || !Array.isArray(value.pros) ||
+      !Array.isArray(value.cons) || typeof value.provider !== 'string') {
+    const message = isDiagnosisResponse(value) && typeof value.error === 'string'
+      ? value.error
+      : '診斷服務回傳格式不正確，請稍後重試。';
+    throw new Error(message);
+  }
+
+  const pros = value.pros.filter((item): item is string => typeof item === 'string');
+  const cons = value.cons.filter((item): item is string => typeof item === 'string');
+  if (!value.summary.trim() || pros.length === 0 || cons.length === 0) {
+    throw new Error('診斷服務回傳內容不完整，請稍後重試。');
+  }
+
+  return { summary: value.summary, pros, cons, provider: value.provider };
+}
+
 export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({
   holdings,
   realData,
   metrics,
   riskMetrics,
 }) => {
+  const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
   const analysis = useMemo(() => {
-    const totalWeight = holdings.reduce((sum, holding) => sum + (Number(holding.weight) || 0), 0);
     const sectors = new Map<string, number>();
     for (const holding of holdings) {
       const sector = getStockSector(holding.symbol, holding.name, holding.sector);
       sectors.set(sector, (sectors.get(sector) || 0) + (Number(holding.weight) || 0));
     }
 
+    const totalWeight = holdings.reduce((sum, holding) => sum + (Number(holding.weight) || 0), 0);
     const sectorConcentrations = Array.from(sectors.entries())
       .map(([sector, weight]) => ({
         sector,
         percent: totalWeight > 0 ? (weight / totalWeight) * 100 : 0,
       }))
       .sort((left, right) => right.percent - left.percent);
-    const rankedHoldings = [...holdings].sort((left, right) => right.weight - left.weight);
     const performances = holdings
       .map((holding) => getRecentPerformance(holding, realData))
       .filter((performance): performance is HoldingPerformance => performance !== null);
-    const performanceWeight = performances.reduce((sum, item) => sum + item.weight, 0);
-    const weightedReturn = performanceWeight > 0
-      ? performances.reduce((sum, item) => sum + item.returnPercent * item.weight, 0) / performanceWeight
-      : null;
 
-    return { sectorConcentrations, rankedHoldings, performances, weightedReturn, totalWeight };
+    return { sectorConcentrations, performances };
   }, [holdings, realData]);
 
-  const topHolding = analysis.rankedHoldings[0];
-  const topSector = analysis.sectorConcentrations[0];
-  const hasMarketData = Boolean(realData?.tradingDates.length && Object.keys(realData.stocks).length);
-  const pros: string[] = [];
-  const risks: string[] = [];
+  const requestBody = useMemo(() => JSON.stringify({
+    holdings: holdings.map((holding) => ({
+      symbol: holding.symbol,
+      name: holding.name || holding.symbol,
+      weight: Number(holding.weight) || 0,
+      sector: getStockSector(holding.symbol, holding.name, holding.sector),
+    })),
+    sectors: analysis.sectorConcentrations,
+    recentPerformance: analysis.performances,
+    market: {
+      changePercent: null,
+      latestDate: realData?.tradingDates[realData.tradingDates.length - 1] || null,
+    },
+    metrics: {
+      currentNav: metrics.currentNav,
+      cagr: metrics.cagr,
+      maxDrawdown: metrics.maxDrawdown,
+      allTimeReturn: metrics.allTimeReturn,
+    },
+    riskMetrics,
+  }), [analysis, holdings, metrics.allTimeReturn, metrics.cagr, metrics.currentNav, metrics.maxDrawdown, realData, riskMetrics]);
 
-  if (holdings.length > 0 && topHolding) {
-    pros.push(
-      `目前配置包含 ${holdings.length} 檔標的，最大部位為${topHolding.name}（${topHolding.weight}%）；持股與權重明確，便於追蹤配置變化。`
-    );
-    risks.push(
-      `${topHolding.name} 佔配置 ${topHolding.weight}%，${topHolding.weight >= 50 ? '單一標的集中度高，價格波動對組合影響明顯' : '仍是最大單一部位，個股事件可能影響組合'}。`
-    );
-  }
+  useEffect(() => {
+    const controller = new AbortController();
+    if (holdings.length === 0) {
+      setDiagnosis(null);
+      setIsLoading(false);
+      setError(null);
+      return () => controller.abort();
+    }
 
-  if (holdings.length > 0) {
-    const returnText = `${metrics.cagr >= 0 ? '+' : ''}${metrics.cagr.toFixed(2)}%`;
-    pros.push(
-      hasMarketData && Number.isFinite(metrics.cagr)
-        ? `目前選取區間年化報酬率（CAGR）為 ${returnText}，可直接與其他配置期間績效比較。`
-        : '目前診斷依持股名稱、配置權重及產業分類即時計算；取得完整真實行情後會納入歷史績效比較。'
-    );
-    risks.push(
-      hasMarketData && Number.isFinite(metrics.maxDrawdown)
-        ? `目前選取區間最大回撤為 -${metrics.maxDrawdown.toFixed(2)}%；歷史回撤反映下跌期間可能承受的資產縮水。`
-        : '目前尚無足夠歷史行情計算最大回撤，暫時無法量化下跌風險。'
-    );
-  }
+    const loadDiagnosis = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch('/api/ai-insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: requestBody,
+          signal: controller.signal,
+        });
+        const result = await readJsonResponse<unknown>(response, '診斷服務回傳無效資料，請稍後重試。');
+        if (!response.ok) {
+          const errorMessage = isDiagnosisResponse(result) && typeof result.error === 'string'
+            ? result.error
+            : `診斷服務暫時無法處理請求（HTTP ${response.status}）。`;
+          throw new Error(errorMessage);
+        }
+        setDiagnosis(parseDiagnosisResponse(result));
+      } catch (requestError) {
+        if (controller.signal.aborted) return;
+        setDiagnosis(null);
+        setError(requestError instanceof Error ? requestError.message : '診斷服務發生未知錯誤。');
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    };
 
-  if (topSector) {
-    pros.push(
-      `產業曝險以${topSector.sector}為主（${topSector.percent.toFixed(0)}%），且涵蓋 ${analysis.sectorConcentrations.length} 個產業類別，可清楚掌握投資主題。`
-    );
-  } else if (topHolding) {
-    pros.push(`${topHolding.name}（${topHolding.symbol}）目前配置 ${topHolding.weight}%，可直接追蹤其對組合報酬的影響。`);
-  }
-
-  if (riskMetrics.annualizedVolatility !== null) {
-    risks.push(
-      `選取區間年化波動度為 ${(riskMetrics.annualizedVolatility * 100).toFixed(2)}%` +
-      (riskMetrics.sharpeRatio === null ? '，請留意日常價格起伏。' :
-        `，夏普值 ${riskMetrics.sharpeRatio.toFixed(2)}；波動及風險調整後表現會隨區間變動。`)
-    );
-  } else {
-    const missingNames = holdings
-      .filter((holding) => !analysis.performances.some((item) => item.name === holding.name))
-      .map((holding) => holding.name || holding.symbol);
-    risks.push(
-      missingNames.length
-        ? `尚無完整日行情可計算組合波動度，${missingNames.slice(0, 3).join('、')}的個股風險指標未能涵蓋。`
-        : '目前區間的有效日報酬不足，無法可靠估算年化波動度與夏普值。'
-    );
-  }
-
-  if (analysis.weightedReturn !== null && analysis.performances.length > 0) {
-    pros.push(
-      `近約 3 個月可取得還原權息行情的成分股加權報酬為 ${analysis.weightedReturn >= 0 ? '+' : ''}${analysis.weightedReturn.toFixed(2)}%。`
-    );
-  }
-
-  if (analysis.totalWeight !== 100) {
-    risks.push(`目前持股權重合計 ${analysis.totalWeight}%，與 100% 相差 ${Math.abs(100 - analysis.totalWeight)} 個百分點；回測會按有效權重比例標準化。`);
-  } else if (topSector) {
-    risks.push(`${topSector.sector}佔產業曝險 ${topSector.percent.toFixed(0)}%，若該產業同步修正，可能對組合造成較大影響。`);
-  }
-
-  const summary = holdings.length && hasMarketData
-    ? `本地即時分析：${holdings.length} 檔持股，區間 CAGR ${metrics.cagr.toFixed(2)}%、MDD -${metrics.maxDrawdown.toFixed(2)}%。分析依可取得的真實行情及目前權重計算；歷史表現不代表未來結果。`
-    : holdings.length
-      ? `本地即時分析：${holdings.length} 檔持股，行情尚未載入，因此不顯示假造的績效數值；目前分析持股權重與產業曝險。`
-      : '目前沒有持股，新增成分股後即可查看配置與風險分析。';
+    void loadDiagnosis();
+    return () => controller.abort();
+  }, [holdings.length, requestBody, retryCount]);
 
   return (
     <section className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 sm:p-5 flex flex-col gap-4">
@@ -152,39 +186,74 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({
           <BarChart3 className="w-4 h-4 text-slate-700" />
           <h2 className="text-sm font-bold text-slate-900">📊 投資組合即時診斷</h2>
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-            前端即時精算
+            {isLoading ? 'AI 分析中' : diagnosis?.provider || '等待診斷'}
           </span>
         </div>
       </div>
 
-      <p className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-700">
-        {summary}
-      </p>
-
-      {holdings.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3.5">
-            <h3 className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-2">
-              <Lightbulb className="w-3.5 h-3.5" /> 近期潛在優勢（Pros）
-            </h3>
-            <ul className="space-y-1.5 text-xs leading-relaxed text-emerald-900">
-              {pros.slice(0, 4).map((item) => <li key={item}>• {item}</li>)}
-            </ul>
-          </div>
-
-          <div className="rounded-lg border border-amber-100 bg-amber-50/70 p-3.5">
-            <h3 className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-2">
-              <AlertTriangle className="w-3.5 h-3.5" /> 風險警語（Risks / Cons）
-            </h3>
-            <ul className="space-y-1.5 text-xs leading-relaxed text-amber-950">
-              {risks.slice(0, 4).map((item) => <li key={item}>• {item}</li>)}
-            </ul>
-          </div>
+      {holdings.length === 0 ? (
+        <p className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-700">
+          目前沒有持股，新增成分股後即可查看配置與風險分析。
+        </p>
+      ) : isLoading ? (
+        <p role="status" className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3 text-xs text-slate-600">
+          正在根據成分股、產業配置與歷史回測數據產生診斷…
+        </p>
+      ) : error ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-xs text-red-800">
+          <span>診斷載入失敗：{error}</span>
+          <button
+            type="button"
+            onClick={() => setRetryCount((count) => count + 1)}
+            className="rounded-md border border-red-300 bg-white px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100"
+          >
+            重新嘗試
+          </button>
         </div>
-      )}
+      ) : diagnosis ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3.5">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-2">
+                <Lightbulb className="w-3.5 h-3.5" /> 優勢洞察（Pros）
+              </h3>
+              <ul className="space-y-2 text-xs leading-relaxed text-emerald-900">
+                {diagnosis.pros.map((item, index) => (
+                  <li key={`${index}-${item}`} className="flex items-start gap-2">
+                    <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-2">
+                <AlertTriangle className="w-3.5 h-3.5" /> 風險洞察（Cons）
+              </h3>
+              <ul className="space-y-2 text-xs leading-relaxed text-amber-950">
+                {diagnosis.cons.map((item, index) => (
+                  <li key={`${index}-${item}`} className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 shadow-sm">
+            <h3 className="mb-1.5 flex items-center gap-2 text-xs font-bold text-indigo-900">
+              <span aria-hidden="true">🤖</span>
+              AI 總結與行動建議
+            </h3>
+            <p className="text-sm leading-relaxed text-indigo-950">{diagnosis.summary}</p>
+          </div>
+        </>
+      ) : null}
 
       <p className="text-[11px] text-slate-400">
-        分析依目前配置、所選區間與可取得的真實還原權息行情自動計算，僅供參考，非投資建議；歷史表現不代表未來結果。
+        分析依目前配置、所選區間與可取得的真實還原權息行情產生，僅供參考，非投資建議；歷史表現不代表未來結果。
       </p>
     </section>
   );
