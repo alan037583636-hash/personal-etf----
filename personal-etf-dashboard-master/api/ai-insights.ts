@@ -201,7 +201,7 @@ async function requestWithTimeout(url: string, init: RequestInit): Promise<Respo
 
 async function callGemini(apiKey: string, prompt: string): Promise<string> {
   const response = await requestWithTimeout(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -286,7 +286,7 @@ async function handleAiInsights(req: VercelRequest, res: VercelResponse) {
       run: () => callOpenAiCompatible(
         'https://api.groq.com/openai/v1',
         process.env.GROQ_API_KEY || '',
-        'llama-3.3-70b-versatile',
+        'openai/gpt-oss-120b',
         prompt,
         'Groq'
       ),

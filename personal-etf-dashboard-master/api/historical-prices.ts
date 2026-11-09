@@ -123,6 +123,9 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     const fiveYearsAgo = new Date();
     fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
     const period1 = fiveYearsAgo.toISOString().split('T')[0];
+    const period2Date = new Date();
+    period2Date.setUTCDate(period2Date.getUTCDate() + 1);
+    const period2 = period2Date.toISOString().split('T')[0];
 
     const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
     const stockResults: Record<string, StockPriceResult> = {};
@@ -134,7 +137,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
       symbolMap.map(async ({ original, yahooSymbol }) => {
         try {
           const chartResult: unknown = await withTimeout(
-            yf.chart(yahooSymbol, { period1, interval: '1d' }, { validateResult: false }),
+            yf.chart(yahooSymbol, { period1, period2, interval: '1d' }, { validateResult: false }),
             8000,
             `Yahoo Finance ${yahooSymbol} 歷史報價查詢`
           );
