@@ -2,15 +2,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import YahooFinance from 'yahoo-finance2';
 import { withJsonError, withTimeout } from './utils/withJsonError.ts';
 
-// 記憶體快取 (In-Memory Cache Fallback)，在 Vercel Serverless 實例存活期間複用
-interface CacheEntry {
-  timestamp: number;
-  data: any;
-}
-
-const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 分鐘快取
-
 export interface HistoricalPricePoint {
   date: string;
   close: number;
@@ -56,11 +47,10 @@ function normalizeSymbol(symbol: string): { original: string; yahooSymbol: strin
 
 function logLatestQuoteDates(
   symbols: Array<{ original: string; yahooSymbol: string }>,
-  stocks: Record<string, StockPriceResult>,
-  cacheStatus: 'HIT' | 'MISS'
+  stocks: Record<string, StockPriceResult>
 ): void {
   console.log(
-    `[historical-prices] 個別標的最新報價日期（尚未合併交易日，cache=${cacheStatus}）:`,
+    '[historical-prices] 個別標的最新報價日期（尚未合併交易日）:',
     symbols.map(({ original, yahooSymbol }) => {
       const quotes = stocks[original]?.quotes || [];
       return {
@@ -82,7 +72,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     'Access-Control-Allow-Headers',
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
 
   // 處理瀏覽器 Preflight 預檢請求
   if (req.method === 'OPTIONS') {
@@ -94,8 +84,6 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     const symbolsParam = Array.isArray(rawParam)
       ? rawParam.join(',')
       : (rawParam as string) || '2454.TW,2308.TW,3711.TW,2356.TW,0050.TW';
-    const forceRefresh = req.query?.refresh === '1';
-
     const rawSymbols = symbolsParam
       .split(',')
       .map((s) => s.trim())
@@ -109,23 +97,12 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
     }
 
     const symbolMap = rawSymbols.map(normalizeSymbol);
-    const cacheKey = symbolMap.map((s) => s.yahooSymbol).sort().join(',');
-
-    const cached = cache.get(cacheKey);
-    const now = Date.now();
-    if (!forceRefresh && cached && now - cached.timestamp < CACHE_TTL_MS) {
-      res.setHeader('X-Cache-Status', 'HIT');
-      logLatestQuoteDates(symbolMap, cached.data.stocks, 'HIT');
-      return res.status(200).json(cached.data);
-    }
 
     // 計算 5 年前的開始日期
     const fiveYearsAgo = new Date();
     fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
     const period1 = fiveYearsAgo.toISOString().split('T')[0];
-    const period2Date = new Date();
-    period2Date.setUTCDate(period2Date.getUTCDate() + 1);
-    const period2 = period2Date.toISOString().split('T')[0];
+    const period2 = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
 
     const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
     const stockResults: Record<string, StockPriceResult> = {};
@@ -219,7 +196,7 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
       })
     );
 
-    logLatestQuoteDates(symbolMap, stockResults, 'MISS');
+    logLatestQuoteDates(symbolMap, stockResults);
 
     const unavailableSymbols = symbolMap.filter(({ original }) =>
       !stockResults[original]?.quotes.length
@@ -241,11 +218,6 @@ async function handleHistoricalPrices(req: VercelRequest, res: VercelResponse) {
       fetchedAt: new Date().toISOString(),
     };
 
-    cache.set(cacheKey, {
-      timestamp: now,
-      data: responsePayload,
-    });
-    res.setHeader('X-Cache-Status', 'MISS');
     return res.status(200).json(responsePayload);
   } catch (error: any) {
     console.error('API /api/historical-prices error:', error);
