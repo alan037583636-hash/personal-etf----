@@ -1,10 +1,9 @@
 import React from 'react';
-import { PerformanceMetrics, RangePreset, RebalanceMode, RiskMetrics } from '../types/etf';
-import { ArrowUpRight, ArrowDownRight, TrendingUp, ShieldAlert, Award, Info } from 'lucide-react';
+import { PerformanceMetrics, RebalanceMode, RiskMetrics } from '../types/etf';
+import { Info } from 'lucide-react';
 
 interface MetricsCardsProps {
   metrics: PerformanceMetrics;
-  selectedPreset: RangePreset;
   rangeLabel: string;
   rebalanceMode: RebalanceMode;
   benchmarkSymbol: string;
@@ -14,9 +13,57 @@ interface MetricsCardsProps {
   hasMarketData: boolean;
 }
 
+interface MetricHelpProps {
+  label: string;
+  description: string;
+}
+
+const MetricHelp: React.FC<MetricHelpProps> = ({ label, description }) => (
+  <div className="relative group inline-flex shrink-0 items-center">
+    <button
+      type="button"
+      aria-label={`查看${label}說明`}
+      className="text-gray-400 hover:text-gray-600 cursor-help transition-colors"
+    >
+      <Info className="w-3.5 h-3.5" />
+    </button>
+    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-30 w-56 p-2 bg-gray-900 text-white text-[11px] leading-relaxed rounded-md shadow-lg pointer-events-none">
+      {description}
+      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+    </div>
+  </div>
+);
+
+function returnColorClass(value: number): string {
+  if (value > 0) return 'text-red-600';
+  if (value < 0) return 'text-green-600';
+  return 'text-gray-700';
+}
+
+function formatReturn(value: number | undefined): string {
+  if (value === undefined) return '--';
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+function SubMetric({
+  label,
+  value,
+  valueClassName = 'text-gray-700',
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="flex justify-between items-center text-sm border-t border-gray-100 pt-2 mt-4">
+      <span className="text-gray-500">{label}</span>
+      <span className={`font-mono font-semibold tabular-nums text-right ${valueClassName}`}>{value}</span>
+    </div>
+  );
+}
+
 export const MetricsCards: React.FC<MetricsCardsProps> = ({
   metrics,
-  selectedPreset,
   rangeLabel,
   rebalanceMode,
   benchmarkSymbol,
@@ -25,258 +72,104 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({
   riskMetrics,
   hasMarketData,
 }) => {
-  const isRangePositive = metrics.rangeReturn > 0;
-  const isRangeNegative = metrics.rangeReturn < 0;
-  const isCagrPositive = metrics.cagr >= 0;
-  const is5YearPositive = metrics.allTimeReturn > 0;
-  const is5YearNegative = metrics.allTimeReturn < 0;
+  const dailyChangeColor = todayChangePercent === null
+    ? 'text-gray-700'
+    : returnColorClass(todayChangePercent);
+  const benchmarkReturn = hasMarketData ? metrics.benchmarkRangeReturn : undefined;
 
   return (
-    <div className="space-y-2.5 sm:space-y-3">
-    <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
-      {/* 1. 最新淨值 (Current NAV) */}
-      <div className={`col-span-2 p-4 sm:p-5 rounded-xl border shadow-2xs flex flex-col justify-between ${
-        is5YearPositive
-          ? 'border-red-300 bg-red-50'
-          : is5YearNegative
-            ? 'border-green-300 bg-green-50'
-            : 'border-slate-200 bg-white'
-      }`}>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate">最新淨值 (NAV)</span>
-          <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono">基期 10.00 元</span>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <article className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-500">淨值 (NAV)</h2>
+          <span className="text-xs text-gray-500">基期 10.00 元</span>
         </div>
-
-        <div className="my-1.5 sm:my-2 flex flex-wrap items-end justify-between gap-2">
-          <div className="flex items-baseline gap-1.5 sm:gap-2">
-          <span className={`text-4xl sm:text-5xl font-extrabold font-mono tracking-tight tabular-nums ${
-            is5YearPositive ? 'text-red-600' : is5YearNegative ? 'text-green-600' : 'text-slate-900'
-          }`}>
-            {hasMarketData ? metrics.currentNav.toFixed(2) : '--'}
-          </span>
-          <span className="text-xs sm:text-sm font-medium text-slate-500">元</span>
-          </div>
-          <div className={`flex flex-col items-end font-mono tabular-nums ${
-            todayChange === null || todayChangePercent === null
-              ? 'text-slate-400'
-              : todayChange >= 0 ? 'text-red-600' : 'text-emerald-600'
-          }`}>
-            <span className="text-[10px] sm:text-xs font-sans font-medium text-slate-500">最新交易日漲跌</span>
-            <span className="flex items-center text-sm sm:text-base font-bold">
-              {todayChange === null || todayChangePercent === null ? (
-                '資料不足'
-              ) : (
-                <>
-                  {todayChange >= 0
-                    ? <ArrowUpRight className="w-4 h-4" />
-                    : <ArrowDownRight className="w-4 h-4" />}
-                  {todayChange >= 0 ? '+' : ''}{todayChange.toFixed(2)} 元
-                  <span className="ml-1">({todayChangePercent >= 0 ? '+' : ''}{todayChangePercent.toFixed(2)}%)</span>
-                </>
-              )}
-            </span>
-          </div>
+        <div className="mt-4 text-3xl sm:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-gray-900">
+          {hasMarketData ? `${metrics.currentNav.toFixed(2)} 元` : '--'}
         </div>
+        <div className="mt-auto">
+          <SubMetric
+            label="最新日漲跌"
+            value={todayChange === null || todayChangePercent === null
+              ? '資料不足'
+              : `${todayChange > 0 ? '+' : ''}${todayChange.toFixed(2)} 元 (${formatReturn(todayChangePercent)})`}
+            valueClassName={dailyChangeColor}
+          />
+        </div>
+      </article>
 
-        <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">
-          <span className="text-slate-400 truncate">5年總報酬:</span>
-          <span
-            className={`font-mono font-bold tabular-nums flex items-center shrink-0 ${
-              is5YearPositive ? 'text-red-600' : is5YearNegative ? 'text-green-600' : 'text-slate-500'
-            }`}
-          >
-            {hasMarketData ? (
+      <article className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-500">{rangeLabel} 累積報酬</h2>
+        </div>
+        <div className={`mt-4 text-3xl sm:text-4xl font-extrabold font-mono tracking-tight tabular-nums ${hasMarketData ? returnColorClass(metrics.rangeReturn) : 'text-gray-700'}`}>
+          {hasMarketData ? formatReturn(metrics.rangeReturn) : '--'}
+        </div>
+        <div className="mt-auto">
+          <SubMetric
+            label={`對比大盤 (${benchmarkSymbol})`}
+            value={formatReturn(benchmarkReturn)}
+            valueClassName={benchmarkReturn === undefined ? 'text-gray-700' : returnColorClass(benchmarkReturn)}
+          />
+          <SubMetric
+            label={<>Beta <span className="text-xs">(0050.TW)</span></>}
+            value={riskMetrics.beta === null ? '資料不足' : riskMetrics.beta.toFixed(2)}
+          />
+        </div>
+      </article>
+
+      <article className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-500">{rangeLabel} 年化報酬 (CAGR)</h2>
+          <MetricHelp label="CAGR" description="衡量每年平均的複利增長率。" />
+        </div>
+        <div className={`mt-4 text-3xl sm:text-4xl font-extrabold font-mono tracking-tight tabular-nums ${hasMarketData ? returnColorClass(metrics.cagr) : 'text-gray-700'}`}>
+          {hasMarketData ? formatReturn(metrics.cagr) : '--'}
+        </div>
+        <div className="mt-auto">
+          <SubMetric
+            label="回測模式"
+            value={rebalanceMode === 'quarterly_rebalance' ? '每季再平衡' : '買進持有'}
+          />
+          <SubMetric
+            label={<>夏普值 <span className="text-xs">(Sharpe Ratio)</span></>}
+            value={riskMetrics.sharpeRatio === null ? '資料不足' : riskMetrics.sharpeRatio.toFixed(2)}
+          />
+        </div>
+      </article>
+
+      <article className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-500">{rangeLabel} 風險控管</h2>
+          <MetricHelp
+            label="MDD"
+            description="這段期間內淨值從最高點跌至最低點的最大跌幅，衡量下檔風險。"
+          />
+        </div>
+        <div className="mt-4 text-3xl sm:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-gray-900">
+          {hasMarketData ? `-${metrics.maxDrawdown.toFixed(2)}%` : '--'}
+        </div>
+        <div className="mt-auto">
+          <SubMetric
+            label="區間最低價"
+            value={hasMarketData ? `${metrics.rangeLow.toFixed(2)} 元` : '--'}
+          />
+          <SubMetric
+            label={
               <>
-                {is5YearPositive ? (
-                  <ArrowUpRight className="w-3.5 h-3.5 inline" />
-                ) : is5YearNegative ? (
-                  <ArrowDownRight className="w-3.5 h-3.5 inline" />
-                ) : null}
-                {is5YearPositive ? '+' : ''}
-                {metrics.allTimeReturn.toFixed(2)}%
+                年化波動度
+                <MetricHelp
+                  label="年化波動度"
+                  description="區間每日報酬率標準差乘以 √252，衡量年化價格波動。"
+                />
               </>
-            ) : '--'}
-          </span>
+            }
+            value={riskMetrics.annualizedVolatility === null
+              ? '資料不足'
+              : `${(riskMetrics.annualizedVolatility * 100).toFixed(2)}%`}
+          />
         </div>
-      </div>
-
-      {/* 2. 累積報酬率 (Total Return, %) */}
-      <div className={`p-3.5 sm:p-4 rounded-xl border shadow-2xs flex flex-col justify-between ${
-        isRangePositive
-          ? 'border-red-300 bg-red-50'
-          : isRangeNegative
-            ? 'border-green-300 bg-green-50'
-            : 'border-slate-200 bg-white'
-      }`}>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate" title={`${rangeLabel} 累積報酬率`}>
-            {rangeLabel} 累積報酬
-          </span>
-          <Award className="w-4 h-4 text-amber-500 shrink-0" />
-        </div>
-
-        <div className="my-1.5 sm:my-2">
-          <div
-            className={`text-2xl sm:text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums flex items-baseline gap-1 ${
-              isRangePositive ? 'text-red-600' : isRangeNegative ? 'text-green-600' : 'text-slate-500'
-            }`}
-          >
-            {hasMarketData ? (
-              <>
-                {isRangePositive ? (
-                  <ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
-                ) : isRangeNegative ? (
-                  <ArrowDownRight className="w-5 h-5 sm:w-6 sm:h-6 inline stroke-[2.5]" />
-                ) : null}
-                <span>
-                  {isRangePositive ? '+' : ''}
-                  {metrics.rangeReturn.toFixed(2)}%
-                </span>
-              </>
-            ) : '--'}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">
-          <span className="text-slate-400 truncate">對比 {benchmarkSymbol}:</span>
-          <span className="font-mono font-semibold text-slate-700 tabular-nums shrink-0">
-            {hasMarketData && metrics.benchmarkRangeReturn !== undefined
-              ? `${metrics.benchmarkRangeReturn >= 0 ? '+' : ''}${metrics.benchmarkRangeReturn.toFixed(2)}%`
-              : '--'}
-          </span>
-        </div>
-      </div>
-
-      {/* 3. 年化報酬率 (CAGR, %) 帶有專業 Tooltip */}
-      <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 min-w-0">
-            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate" title={`${rangeLabel} 年化報酬率 (CAGR)`}>
-              {rangeLabel} CAGR
-            </span>
-            {/* 專業財經 Tooltip: CAGR */}
-            <div className="relative group inline-flex items-center">
-              <button
-                type="button"
-                aria-label="查看 CAGR 說明"
-                className="text-slate-400 hover:text-slate-600 cursor-help transition-colors"
-              >
-                <Info className="w-3.5 h-3.5" />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-30 w-48 sm:w-56 p-2 bg-slate-900 text-white text-[11px] leading-relaxed rounded-md shadow-lg pointer-events-none">
-                <div className="font-semibold text-amber-300 mb-0.5">年化報酬率 (CAGR)</div>
-                衡量每年平均的複利增長率
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-              </div>
-            </div>
-          </div>
-          <TrendingUp className="w-4 h-4 text-blue-500 shrink-0" />
-        </div>
-
-        <div className="my-1.5 sm:my-2">
-          <div
-            className={`text-2xl sm:text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums flex items-baseline gap-1 ${
-              isCagrPositive ? 'text-red-600' : 'text-emerald-600'
-            }`}
-          >
-            <span>
-              {hasMarketData ? `${isCagrPositive ? '+' : ''}${metrics.cagr.toFixed(2)}%` : '--'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">
-          <span className="text-slate-400 truncate">模式:</span>
-          <span className="font-semibold text-slate-700 shrink-0">
-            {rebalanceMode === 'quarterly_rebalance' ? '每季再平衡' : '買進持有'}
-          </span>
-        </div>
-      </div>
-
-      {/* 4. 最大回撤 (Max Drawdown, MDD, %) 帶有專業 Tooltip */}
-      <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 min-w-0">
-            <span className="text-[11px] sm:text-xs font-semibold text-slate-500 truncate" title={`${rangeLabel} 最大回撤 (MDD)`}>
-              {rangeLabel} MDD
-            </span>
-            {/* 專業財經 Tooltip: MDD */}
-            <div className="relative group inline-flex items-center">
-              <button
-                type="button"
-                aria-label="查看 MDD 說明"
-                className="text-slate-400 hover:text-slate-600 cursor-help transition-colors"
-              >
-                <Info className="w-3.5 h-3.5" />
-              </button>
-              <div className="absolute bottom-full right-0 sm:left-1/2 sm:-translate-x-1/2 mb-1.5 hidden group-hover:block z-30 w-52 sm:w-60 p-2 bg-slate-900 text-white text-[11px] leading-relaxed rounded-md shadow-lg pointer-events-none">
-                <div className="font-semibold text-red-300 mb-0.5">最大回撤 (Max Drawdown)</div>
-                這段期間內淨值從最高點跌至最低點的最大跌幅，衡量下檔風險
-                <div className="absolute top-full right-2 sm:left-1/2 sm:-translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-              </div>
-            </div>
-          </div>
-          <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
-        </div>
-
-        <div className="my-1.5 sm:my-2">
-          <div className="text-2xl sm:text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-red-600">
-            {hasMarketData ? `-${metrics.maxDrawdown.toFixed(2)}%` : '--'}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100">
-          <span className="text-slate-400 truncate">區間最低價:</span>
-          <span className="font-mono font-semibold text-slate-700 tabular-nums shrink-0">
-            {hasMarketData ? `${metrics.rangeLow.toFixed(2)} 元` : '--'}
-          </span>
-        </div>
-      </div>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3" aria-label="風險調整後收益指標">
-      {[
-        {
-          label: '年化波動度',
-          value: riskMetrics.annualizedVolatility === null
-            ? '資料不足'
-            : `${(riskMetrics.annualizedVolatility * 100).toFixed(2)}%`,
-          description: '區間每日報酬率標準差乘以 √252，衡量年化價格波動。',
-        },
-        {
-          label: '夏普值',
-          value: riskMetrics.sharpeRatio === null ? '資料不足' : riskMetrics.sharpeRatio.toFixed(2),
-          description: '以年化報酬率扣除 1.5% 無風險利率後，除以年化波動度。',
-        },
-        {
-          label: `Beta（${benchmarkSymbol}）`,
-          value: riskMetrics.beta === null ? '資料不足' : riskMetrics.beta.toFixed(2),
-          description: `自組 ETF 與 ${benchmarkSymbol} 的每日報酬共變異數除以基準變異數。`,
-        },
-      ].map((metric) => (
-        <div
-          key={metric.label}
-          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2.5 shadow-2xs"
-        >
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-[11px] sm:text-xs font-semibold text-slate-500">{metric.label}</span>
-            <div className="relative group inline-flex shrink-0 items-center">
-              <button
-                type="button"
-                aria-label={`查看${metric.label}說明`}
-                className="text-slate-400 hover:text-slate-600 cursor-help transition-colors"
-              >
-                <Info className="w-3.5 h-3.5" />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-30 w-56 p-2 bg-slate-900 text-white text-[11px] leading-relaxed rounded-md shadow-lg pointer-events-none">
-                {metric.description}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-              </div>
-            </div>
-          </div>
-          <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-slate-800">{metric.value}</span>
-        </div>
-      ))}
-    </div>
+      </article>
     </div>
   );
 };

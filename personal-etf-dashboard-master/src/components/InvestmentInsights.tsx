@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, Lightbulb } from 'lucide-react';
 import { PerformanceMetrics, PortfolioHolding, RealDataApiResponse, RiskMetrics } from '../types/etf';
 import { readJsonResponse } from '../utils/http';
@@ -92,9 +92,8 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({
   riskMetrics,
 }) => {
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
 
   const analysis = useMemo(() => {
     const sectors = new Map<string, number>();
@@ -139,45 +138,29 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({
     riskMetrics,
   }), [analysis, holdings, metrics.allTimeReturn, metrics.cagr, metrics.currentNav, metrics.maxDrawdown, realData, riskMetrics]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    if (holdings.length === 0) {
-      setDiagnosis(null);
-      setIsLoading(false);
-      setError(null);
-      return () => controller.abort();
-    }
-
-    const loadDiagnosis = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const response = await fetch('/api/ai-insights', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: requestBody,
-          signal: controller.signal,
-        });
-        const result = await readJsonResponse<unknown>(response, '診斷服務回傳無效資料，請稍後重試。');
-        if (!response.ok) {
-          const errorMessage = isDiagnosisResponse(result) && typeof result.error === 'string'
-            ? result.error
-            : `診斷服務暫時無法處理請求（HTTP ${response.status}）。`;
-          throw new Error(errorMessage);
-        }
-        setDiagnosis(parseDiagnosisResponse(result));
-      } catch (requestError) {
-        if (controller.signal.aborted) return;
-        setDiagnosis(null);
-        setError(requestError instanceof Error ? requestError.message : '診斷服務發生未知錯誤。');
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
+  const generateAiDiagnosis = async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/ai-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+      });
+      const result = await readJsonResponse<unknown>(response, '診斷服務回傳無效資料，請稍後重試。');
+      if (!response.ok) {
+        const errorMessage = isDiagnosisResponse(result) && typeof result.error === 'string'
+          ? result.error
+          : `診斷服務暫時無法處理請求（HTTP ${response.status}）。`;
+        throw new Error(errorMessage);
       }
-    };
-
-    void loadDiagnosis();
-    return () => controller.abort();
-  }, [holdings.length, requestBody, retryCount]);
+      setDiagnosis(parseDiagnosisResponse(result));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '診斷服務發生未知錯誤。');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <section className="bg-white rounded-xl border border-slate-200/90 shadow-sm p-4 sm:p-5 flex flex-col gap-4">
@@ -185,9 +168,21 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-slate-700" />
           <h2 className="text-sm font-bold text-slate-900">📊 投資組合即時診斷</h2>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-            {isLoading ? 'AI 分析中' : diagnosis?.provider || '等待診斷'}
-          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {diagnosis && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+              {diagnosis.provider}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => void generateAiDiagnosis()}
+            disabled={isGenerating || holdings.length === 0}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isGenerating ? '⏳ AI 診斷生成中...' : '🤖 重新生成 AI 診斷'}
+          </button>
         </div>
       </div>
 
@@ -195,62 +190,61 @@ export const InvestmentInsights: React.FC<InvestmentInsightsProps> = ({
         <p className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-700">
           目前沒有持股，新增成分股後即可查看配置與風險分析。
         </p>
-      ) : isLoading ? (
-        <p role="status" className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3 text-xs text-slate-600">
-          正在根據成分股、產業配置與歷史回測數據產生診斷…
-        </p>
-      ) : error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-xs text-red-800">
-          <span>診斷載入失敗：{error}</span>
-          <button
-            type="button"
-            onClick={() => setRetryCount((count) => count + 1)}
-            className="rounded-md border border-red-300 bg-white px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100"
-          >
-            重新嘗試
-          </button>
-        </div>
-      ) : diagnosis ? (
+      ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3.5">
-              <h3 className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-2">
-                <Lightbulb className="w-3.5 h-3.5" /> 優勢洞察（Pros）
-              </h3>
-              <ul className="space-y-2 text-xs leading-relaxed text-emerald-900">
-                {diagnosis.pros.map((item, index) => (
-                  <li key={`${index}-${item}`} className="flex items-start gap-2">
-                    <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
+          {error && (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-xs text-red-800">
+              診斷載入失敗：{error}
             </div>
+          )}
 
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5">
-              <h3 className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-2">
-                <AlertTriangle className="w-3.5 h-3.5" /> 風險洞察（Cons）
-              </h3>
-              <ul className="space-y-2 text-xs leading-relaxed text-amber-950">
-                {diagnosis.cons.map((item, index) => (
-                  <li key={`${index}-${item}`} className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          {diagnosis ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3.5">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-2">
+                    <Lightbulb className="w-3.5 h-3.5" /> 優勢洞察（Pros）
+                  </h3>
+                  <ul className="space-y-2 text-xs leading-relaxed text-emerald-900">
+                    {diagnosis.pros.map((item, index) => (
+                      <li key={`${index}-${item}`} className="flex items-start gap-2">
+                        <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
-          <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 shadow-sm">
-            <h3 className="mb-1.5 flex items-center gap-2 text-xs font-bold text-indigo-900">
-              <span aria-hidden="true">🤖</span>
-              AI 總結與行動建議
-            </h3>
-            <p className="text-sm leading-relaxed text-indigo-950">{diagnosis.summary}</p>
-          </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold text-amber-900 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5" /> 風險洞察（Cons）
+                  </h3>
+                  <ul className="space-y-2 text-xs leading-relaxed text-amber-950">
+                    {diagnosis.cons.map((item, index) => (
+                      <li key={`${index}-${item}`} className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 shadow-sm">
+                <h3 className="mb-1.5 flex items-center gap-2 text-xs font-bold text-indigo-900">
+                  <span aria-hidden="true">🤖</span>
+                  AI 總結與行動建議
+                </h3>
+                <p className="text-sm leading-relaxed text-indigo-950">{diagnosis.summary}</p>
+              </div>
+            </>
+          ) : (
+            <p className="rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-700">
+              點擊按鈕，由 AI 為您產生專屬的投資組合量化分析報告。
+            </p>
+          )}
         </>
-      ) : null}
+      )}
 
       <p className="text-[11px] text-slate-400">
         分析依目前配置、所選區間與可取得的真實還原權息行情產生，僅供參考，非投資建議；歷史表現不代表未來結果。

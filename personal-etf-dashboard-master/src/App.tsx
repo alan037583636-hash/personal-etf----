@@ -443,7 +443,6 @@ export default function App() {
         {/* 4. 績效與風險指標面板 (Performance Metrics: 最新淨值, 累積報酬率, 年化報酬率, 最大回撤) */}
         <MetricsCards
           metrics={metrics}
-          selectedPreset={selectedPreset}
           rangeLabel={rangeLabel}
           rebalanceMode={rebalanceMode}
           benchmarkSymbol={benchmarkSymbols.find((symbol) => symbol.trim()) || '0050.TW'}
