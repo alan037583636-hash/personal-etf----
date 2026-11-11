@@ -24,6 +24,7 @@ import { NavTrendChart } from './components/NavTrendChart';
 import { PortfolioManager, DEFAULT_HOLDINGS } from './components/PortfolioManager';
 import { HoldingsBreakdown } from './components/HoldingsBreakdown';
 import { InvestmentInsights } from './components/InvestmentInsights';
+import { JokeCard } from './components/JokeCard';
 import { findTaiwanStock, getStockSector, normalizeStockSymbol } from './utils/stockMetadata';
 import { Database, RefreshCw, AlertCircle, CheckCircle2, Check } from 'lucide-react';
 
@@ -481,6 +482,8 @@ export default function App() {
           metrics={metrics}
           riskMetrics={riskMetrics}
         />
+
+        <JokeCard />
       </main>
 
       {/* 頁尾版權與免責聲明 */}
