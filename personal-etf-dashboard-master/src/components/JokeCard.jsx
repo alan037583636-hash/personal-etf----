@@ -4,7 +4,7 @@ const JOKE_API_URL =
   'https://raw.githubusercontent.com/alan037583636-hash/yt-joke-scraper/main/latest_joke.json';
 
 /**
- * @typedef {{ timestamp?: string | number, joke_text: string, explanation?: string }} Joke
+ * @typedef {{ timestamp?: string | number, joke_text: string }} Joke
  * @typedef {{ fetch_date?: string, video_id?: string, jokes: Joke[] }} JokeData
  */
 
@@ -89,8 +89,8 @@ export function JokeCard() {
   if (loading) {
     return (
       <section
-        aria-label="每日皓金句載入中"
-        className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm"
+        aria-label="每日皓哥金句載入中"
+        className="bg-yellow-50 p-5 rounded-xl border border-yellow-200 shadow-sm"
       >
         <p className="text-sm text-gray-500">每日皓金句載入中...</p>
       </section>
@@ -99,7 +99,7 @@ export function JokeCard() {
 
   if (error) {
     return (
-      <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+      <section className="bg-yellow-50 p-5 rounded-xl border border-yellow-200 shadow-sm">
         <p role="alert" className="text-sm text-red-700">{error}</p>
       </section>
     );
@@ -108,9 +108,9 @@ export function JokeCard() {
   if (!data) return null;
 
   return (
-    <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-      <div className="mb-4 flex flex-col gap-2 border-b border-gray-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-bold text-slate-900">🎙️ 每日皓金句區</h2>
+    <section className="bg-yellow-50 p-5 rounded-xl border border-yellow-200 shadow-sm">
+      <div className="mb-4 flex flex-col gap-2 border-b border-yellow-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-bold text-slate-900">🎙️ 每日皓哥金句區</h2>
         {data.fetch_date && (
           <time className="text-xs text-gray-500" dateTime={data.fetch_date}>
             抓取日期：{data.fetch_date}
@@ -126,7 +126,7 @@ export function JokeCard() {
             : null;
 
           return (
-            <article key={`${joke.timestamp ?? 'joke'}-${index}`} className="space-y-3">
+            <article key={`${joke.timestamp ?? 'joke'}-${index}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-sm leading-relaxed text-slate-800">{joke.joke_text}</p>
                 {videoUrl && (
@@ -140,12 +140,6 @@ export function JokeCard() {
                   </a>
                 )}
               </div>
-              {joke.explanation && (
-                <div className="rounded-lg bg-gray-50 p-3 text-sm leading-relaxed text-gray-600">
-                  <span className="font-semibold text-gray-700">AI 解析：</span>
-                  {joke.explanation}
-                </div>
-              )}
             </article>
           );
         })}
